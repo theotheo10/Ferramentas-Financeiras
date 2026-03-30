@@ -572,21 +572,56 @@ def fetch_ntnb() -> dict:
                 raw = resp.read().decode("latin-1", errors="replace")
 
             titles = []
+            # ANBIMA usa @ ou ; como separador dependendo da versão do arquivo
+            # Detecta o separador pela linha de cabeçalho ou pela primeira linha de dados
+            sep = "@"
+            for line in raw.splitlines()[:20]:
+                if ";" in line and "NTN" in line.upper():
+                    sep = ";"
+                    break
+                if "@" in line and "NTN" in line.upper():
+                    sep = "@"
+                    break
+
             for line in raw.splitlines():
-                if "NTN-B" not in line:
+                if "NTN-B" not in line.upper():
                     continue
-                parts = line.split("@")
-                if len(parts) < 6:
+                parts = line.split(sep)
+                # Tenta ambos os separadores se o primário não funcionar
+                if len(parts) < 4:
+                    alt = ";" if sep == "@" else "@"
+                    parts = line.split(alt)
+                if len(parts) < 4:
                     continue
                 try:
-                    tipo = parts[0].strip()
-                    if "NTN-B" not in tipo or "Principal" in tipo:
+                    tipo = parts[0].strip().strip('"')
+                    if "NTN-B" not in tipo.upper() or "PRINCIPAL" in tipo.upper():
                         continue
-                    venc_raw = parts[2].strip()
+                    # Vencimento pode estar na col 2 ou 3 dependendo do formato
+                    venc_raw = None
+                    for col in [2, 3, 1]:
+                        candidate_v = parts[col].strip().strip('"') if col < len(parts) else ""
+                        if "/" in candidate_v and len(candidate_v) >= 8:
+                            venc_raw = candidate_v
+                            break
+                    if not venc_raw:
+                        continue
                     dv, mv, yv = venc_raw.split("/")
-                    venc_iso   = f"{yv}-{mv}-{dv}"
-                    taxa       = float(parts[5].strip().replace(",", "."))
-                    if taxa > 0:
+                    venc_iso   = f"{yv.zfill(4)}-{mv.zfill(2)}-{dv.zfill(2)}"
+                    # Taxa indicativa pode estar em diferentes colunas
+                    taxa = None
+                    for col in [5, 4, 6, 3]:
+                        if col >= len(parts):
+                            continue
+                        raw_v = parts[col].strip().strip('"').replace(",", ".")
+                        try:
+                            v = float(raw_v)
+                            if 2.0 < v < 20.0:  # taxa razoável para NTN-B
+                                taxa = v
+                                break
+                        except ValueError:
+                            continue
+                    if taxa and taxa > 0:
                         titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
                 except Exception:
                     continue
@@ -2968,7 +3003,7 @@ def compute_fund_betas(history_path: Path, index_rets: dict) -> dict:
 
     return results
 
-def main(skip_k10: bool = False) -> None:
+def main(skip_k10: bool = False, skip_all_optimizer: bool = False) -> None:
     today = datetime.date.today()
     print(f"Executando para {today.isoformat()}")
 
@@ -3163,26 +3198,30 @@ def main(skip_k10: bool = False) -> None:
     print(f"\n── Jensen's alpha: {len(jensen_alpha)} fundos calculados")
 
     # ── Otimizador pré-computado ──────────────────────────────────────────────────
-    print(f"\n── Otimizador pré-computado")
-    try:
-        _hist_for_opt = json.loads(hist_path.read_text())
-        precomputed_optimizer = compute_precomputed_optimizer(
-            results        = results,
-            fund_betas     = fund_betas,
-            jensen_alpha   = jensen_alpha,
-            hist           = _hist_for_opt,
-            cdi_annual     = _cdi_ann,
-            ibov_annual    = _ibov_ann,
-            skip_k10       = skip_k10,
-        )
-        n_precomp = len(precomputed_optimizer)
-        print(f"  {n_precomp} portfólios pré-computados"
-              + (" (k=10 será calculado em paralelo)" if skip_k10 else ""))
-    except Exception as _oe:
-        import traceback
-        print(f"  ⚠ otimizador pré-computado falhou: {_oe}")
-        traceback.print_exc()
+    if skip_all_optimizer:
+        print(f"\n── Otimizador pré-computado: pulado (será calculado em jobs paralelos)")
         precomputed_optimizer = {}
+    else:
+        print(f"\n── Otimizador pré-computado")
+        try:
+            _hist_for_opt = json.loads(hist_path.read_text())
+            precomputed_optimizer = compute_precomputed_optimizer(
+                results        = results,
+                fund_betas     = fund_betas,
+                jensen_alpha   = jensen_alpha,
+                hist           = _hist_for_opt,
+                cdi_annual     = _cdi_ann,
+                ibov_annual    = _ibov_ann,
+                skip_k10       = skip_k10,
+            )
+            n_precomp = len(precomputed_optimizer)
+            print(f"  {n_precomp} portfólios pré-computados"
+                  + (" (k=10 será calculado em paralelo)" if skip_k10 else ""))
+        except Exception as _oe:
+            import traceback
+            print(f"  ⚠ otimizador pré-computado falhou: {_oe}")
+            traceback.print_exc()
+            precomputed_optimizer = {}
 
     data_out = {
         "generatedAt":          datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -3327,11 +3366,11 @@ if __name__ == "__main__":
 
     elif "--skip-all-optimizer" in args:
         # Job fetch: zero otimizador, idêntico ao workflow original
-        main(skip_k10=True)
+        main(skip_k10=True, skip_all_optimizer=True)
 
     elif "--skip-k10" in args:
         # Compatibilidade com versão anterior
-        main(skip_k10=True)
+        main(skip_k10=True, skip_all_optimizer=False)
 
     else:
         # Modo local completo
