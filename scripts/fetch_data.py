@@ -525,49 +525,52 @@ def fetch_ntnb() -> dict:
             "ntnb_titles":     titles,
         }
 
-    # ── Fonte 1: ANBIMA API de mercado secundário ─────────────────────────────
-    # Endpoint público, sem autenticação, sem bloqueio de bot.
-    # Retorna taxas indicativas de NTN-B do mercado secundário (ANBIMA).
-    try:
-        url = "https://www.anbima.com.br/informacoes/merc-sec/arqs/ms" + today.strftime("%y%m%d") + ".txt"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode("latin-1", errors="replace")
+    # ── Fonte 1: ANBIMA — tenta hoje, ontem e anteontem ─────────────────────
+    # O arquivo do dia só fica disponível após o fechamento do mercado (~19h BRT).
+    # Workflow roda às 12h e 18h UTC = 9h e 15h BRT — pode não ter o arquivo de hoje.
+    for delta in range(3):
+        candidate = today - datetime.timedelta(days=delta)
+        # Pula fins de semana (ANBIMA não publica)
+        if candidate.weekday() >= 5:
+            continue
+        url = "https://www.anbima.com.br/informacoes/merc-sec/arqs/ms" + candidate.strftime("%y%m%d") + ".txt"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read().decode("latin-1", errors="replace")
 
-        titles = []
-        for line in raw.splitlines():
-            # Formato ANBIMA: campos separados por @
-            # Título@Ref.NTN-B@Vencimento@TaxaCompra@TaxaVenda@TaxaIndicativa@...
-            if "NTN-B" not in line:
-                continue
-            parts = line.split("@")
-            if len(parts) < 6:
-                continue
-            try:
-                tipo  = parts[0].strip()
-                if "NTN-B" not in tipo or "Principal" in tipo:
+            titles = []
+            for line in raw.splitlines():
+                if "NTN-B" not in line:
                     continue
-                venc_raw = parts[2].strip()  # DD/MM/AAAA
-                d, m, y  = venc_raw.split("/")
-                venc_iso = f"{y}-{m}-{d}"
-                taxa     = float(parts[5].strip().replace(",", "."))
-                if taxa > 0:
-                    titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
-            except Exception:
-                continue
+                parts = line.split("@")
+                if len(parts) < 6:
+                    continue
+                try:
+                    tipo = parts[0].strip()
+                    if "NTN-B" not in tipo or "Principal" in tipo:
+                        continue
+                    venc_raw = parts[2].strip()
+                    d, m, y  = venc_raw.split("/")
+                    venc_iso = f"{y}-{m}-{d}"
+                    taxa     = float(parts[5].strip().replace(",", "."))
+                    if taxa > 0:
+                        titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
+                except Exception:
+                    continue
 
-        result = _process_titles(titles)
-        if result:
-            result["ntnb_source"] = "anbima"
-            longs = [t for t in titles
-                     if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
-            longs_str = ", ".join(f"{t['vencimento']}={t['taxa']:.2f}%" for t in longs)
-            print(f"  NTN-B ANBIMA ({len(longs)} longas): {longs_str}")
-            print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
-            return result
-        print("  ✗ NTN-B ANBIMA: sem títulos válidos")
-    except Exception as e:
-        print(f"  ✗ NTN-B ANBIMA falhou: {e}")
+            result = _process_titles(titles)
+            if result:
+                result["ntnb_source"] = "anbima"
+                longs = [t for t in titles
+                         if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
+                longs_str = ", ".join(f"{t['vencimento']}={t['taxa']:.2f}%" for t in longs)
+                print(f"  NTN-B ANBIMA {candidate} ({len(longs)} longas): {longs_str}")
+                print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
+                return result
+            print(f"  ✗ NTN-B ANBIMA {candidate}: sem títulos válidos no arquivo")
+        except Exception as e:
+            print(f"  ✗ NTN-B ANBIMA {candidate}: {e}")
 
     # ── Fonte 2: BCB SGS — série 13793 (NTN-B 2035, proxy de taxa longa) ─────
     # API REST do BCB, sempre disponível, sem bloqueio.
@@ -577,14 +580,14 @@ def fetch_ntnb() -> dict:
         url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13793/dados"
                f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
         if data:
             taxa = float(data[-1]["valor"])
             print(f"  NTN-B BCB SGS 13793 (2035): {taxa:.2f}%")
             return {
                 "ntnb_rate_long":   round(taxa, 4),
-                "ntnb_rate_mid":    round(taxa * 0.97, 4),  # proxy mid ligeiramente menor
+                "ntnb_rate_mid":    round(taxa * 0.97, 4),
                 "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "ntnb_titles":      [{"nome": "NTN-B 2035 (SGS)", "vencimento": "2035-05-15", "taxa": taxa}],
                 "ntnb_source":      "bcb_sgs",
@@ -617,67 +620,68 @@ def fetch_ipca_focus() -> dict:
         "ipca_source":      "fallback",
     }
 
-    # ── Fonte 1: BCB Olinda — Focus ───────────────────────────────────────────
-    # Bug anterior: urllib.parse.urlencode codificava aspas simples como %27,
-    # mas o Olinda exige aspas literais no $filter OData.
-    # Correção: construir a query string manualmente para o $filter.
-    try:
-        import urllib.parse
-        today_year = datetime.date.today().year
-        # Monta URL com $filter literal (aspas simples não codificadas)
-        filter_str = "Indicador eq 'IPCA' and baseCalculo eq '0'"
-        other_params = urllib.parse.urlencode({
-            "$orderby": "Data desc",
-            "$top":     "50",
-            "$format":  "json",
-            "$select":  "Data,Ano,Mediana",
-        })
-        base = "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
-        url  = f"{base}ExpectativasMercadoAnuais?$filter={filter_str}&{other_params}"
-        req  = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0",
-            "Accept":     "application/json",
-        })
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            raw = json.loads(resp.read())
+    # ── Fonte 1: BCB Olinda — Focus (duas variantes de URL) ──────────────────
+    # Variante A: endpoint específico para IPCA (sem $filter, mais confiável)
+    # Variante B: endpoint geral com $filter literal (fallback)
+    import urllib.parse
 
-        records = raw.get("value") or []
-        if not records:
-            raise ValueError("Focus API retornou vazio")
+    today_year = datetime.date.today().year
 
-        from collections import defaultdict
-        by_date_ano: dict = defaultdict(dict)
-        for r in records:
-            data = r.get("Data", "")
-            ano  = r.get("Ano")
-            med  = r.get("Mediana")
-            if data and ano and med is not None:
-                by_date_ano[data][int(ano)] = float(med)
+    for variant, url in [
+        ("A", "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
+              "ExpectativasMercadoAnuais"
+              "?%24filter=Indicador%20eq%20%27IPCA%27%20and%20baseCalculo%20eq%20%270%27"
+              "&%24orderby=Data%20desc&%24top=50&%24format=json&%24select=Data%2CAno%2CMediana"),
+        ("B", "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
+              "ExpectativasMercadoAnuais"
+              f"?$filter=Indicador eq 'IPCA' and baseCalculo eq '0'"
+              "&$orderby=Data desc&$top=50&$format=json&$select=Data,Ano,Mediana"),
+    ]:
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept":     "application/json",
+            })
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                raw = json.loads(resp.read())
 
-        if not by_date_ano:
-            raise ValueError("Nenhum registro válido")
+            records = raw.get("value") or []
+            if not records:
+                print(f"  ✗ Focus IPCA Olinda variante {variant}: retornou vazio")
+                continue
 
-        latest_date = max(by_date_ano.keys())
-        by_ano      = by_date_ano[latest_date]
+            from collections import defaultdict
+            by_date_ano: dict = defaultdict(dict)
+            for r in records:
+                d   = r.get("Data", "")
+                ano = r.get("Ano")
+                med = r.get("Mediana")
+                if d and ano and med is not None:
+                    by_date_ano[d][int(ano)] = float(med)
 
-        ipca_12m = by_ano.get(today_year + 1) or by_ano.get(today_year)
-        ipca_lp  = (by_ano.get(today_year + 5) or by_ano.get(today_year + 4)
-                    or by_ano.get(today_year + 3))
+            if not by_date_ano:
+                continue
 
-        if not ipca_12m:
-            raise ValueError("Sem dados para o ano corrente/próximo")
+            latest_date = max(by_date_ano.keys())
+            by_ano      = by_date_ano[latest_date]
+            ipca_12m    = by_ano.get(today_year + 1) or by_ano.get(today_year)
+            ipca_lp     = (by_ano.get(today_year + 5) or by_ano.get(today_year + 4)
+                           or by_ano.get(today_year + 3))
 
-        result = {
-            "ipca_12m":         round(ipca_12m, 2),
-            "ipca_longo_prazo": round(ipca_lp,  2) if ipca_lp else FALLBACK["ipca_longo_prazo"],
-            "ipca_fetched_at":  latest_date,
-            "ipca_source":      "focus",
-        }
-        print(f"  Focus IPCA 12M={result['ipca_12m']}% LP={result['ipca_longo_prazo']}% (ref. {latest_date})")
-        return result
+            if not ipca_12m:
+                continue
 
-    except Exception as e:
-        print(f"  ✗ Focus IPCA (Olinda) falhou: {e}")
+            result = {
+                "ipca_12m":         round(ipca_12m, 2),
+                "ipca_longo_prazo": round(ipca_lp, 2) if ipca_lp else FALLBACK["ipca_longo_prazo"],
+                "ipca_fetched_at":  latest_date,
+                "ipca_source":      "focus",
+            }
+            print(f"  Focus IPCA variante {variant}: 12M={result['ipca_12m']}% LP={result['ipca_longo_prazo']}% (ref. {latest_date})")
+            return result
+
+        except Exception as e:
+            print(f"  ✗ Focus IPCA Olinda variante {variant}: {e}")
 
     # ── Fonte 2: BCB SGS série 13522 — expectativa IPCA 12M ──────────────────
     # Série pública do BCB sem bloqueio. Usa como proxy de 12M;
@@ -3185,7 +3189,139 @@ def main(skip_k10: bool = False) -> None:
     print(f"\n✓ data.json escrito ({len(results)} fundos)")
 
 
-def run_optimizer_slice(slice_idx: int, n_slices: int) -> None:
+def run_optimizer_k35() -> None:
+    """
+    Calcula o otimizador para k=3 e k=5 por força bruta exata.
+    C(28,3)=3.276 e C(28,5)=98.280 — completa em ~6 segundos.
+    Salva resultado em docs/opt_k35.json.
+    """
+    docs_dir  = Path(__file__).parent.parent / "docs"
+    data      = json.loads((docs_dir / "data.json").read_text())
+    hist      = json.loads((docs_dir / "history.json").read_text())
+
+    results      = data.get("funds", [])
+    fund_betas   = data.get("fund_betas", {})
+    jensen_alpha = data.get("jensenAlpha", {})
+    cdi_annual   = (data.get("cdi") or {}).get("cagr36") or 12.0
+    ibov_annual  = (data.get("ibov") or {}).get("cagr36") or 15.0
+
+    output = compute_precomputed_optimizer(
+        results      = results,
+        fund_betas   = fund_betas,
+        jensen_alpha = jensen_alpha,
+        hist         = hist,
+        cdi_annual   = cdi_annual,
+        ibov_annual  = ibov_annual,
+        skip_k10     = True,   # só k=3 e k=5
+    )
+
+    out_path = docs_dir / "opt_k35.json"
+    out_path.write_text(json.dumps(output, ensure_ascii=False))
+    print(f"✓ k=3+k=5: {len(output)} chaves salvas em opt_k35.json")
+
+
+def aggregate_optimizer_slices(n_slices: int) -> None:
+    """
+    Lê opt_k35.json + opt_slice_0..N-1.json, agrega o melhor por chave,
+    injeta em data.json e remove os arquivos temporários.
+    """
+    docs_dir  = Path(__file__).parent.parent / "docs"
+    data_path = docs_dir / "data.json"
+
+    print(f"\n── Agregando otimizador (k35 + {n_slices} fatias k10)")
+
+    def score_of(key: str, entry: dict) -> float:
+        # extrai o objetivo da chave: "sharpe_3", "betaadj_vol_10", etc.
+        parts = key.replace("betaadj_", "").split("_")
+        obj   = parts[0]
+        m     = entry.get("metrics", {})
+        return {
+            "vol":     -(m.get("vol")     or math.inf),
+            "sharpe":   (m.get("sharpe")  or -math.inf),
+            "return":   (m.get("ret")     or -math.inf),
+            "sortino":  (m.get("sortino") or -math.inf),
+            "calmar":   (m.get("calmar")  or -math.inf),
+            "ir":       (m.get("ir")      or -math.inf),
+        }.get(obj, -math.inf)
+
+    aggregated: dict[str, tuple] = {}
+
+    # k=3 e k=5
+    k35_path = docs_dir / "opt_k35.json"
+    if k35_path.exists():
+        for key, entry in json.loads(k35_path.read_text()).items():
+            aggregated[key] = (entry, score_of(key, entry))
+        k35_path.unlink()
+        print(f"  k=3+k=5: {len(aggregated)} chaves carregadas")
+    else:
+        print("  ⚠ opt_k35.json ausente")
+
+    # k=10 fatias
+    n_loaded = 0
+    for i in range(n_slices):
+        slice_path = docs_dir / f"opt_slice_{i}.json"
+        if not slice_path.exists():
+            print(f"  ⚠ fatia k10 {i} ausente")
+            continue
+        try:
+            for key, entry in json.loads(slice_path.read_text()).items():
+                s = score_of(key, entry)
+                if key not in aggregated or s > aggregated[key][1]:
+                    aggregated[key] = (entry, s)
+            slice_path.unlink()
+            n_loaded += 1
+        except Exception as e:
+            print(f"  ⚠ fatia {i} erro: {e}")
+    print(f"  k=10: {n_loaded}/{n_slices} fatias carregadas")
+
+    if not aggregated:
+        print("  ⚠ nenhum resultado agregado")
+        return
+
+    data = json.loads(data_path.read_text())
+    existing = data.get("precomputedOptimizer", {})
+    for key, (entry, _) in aggregated.items():
+        existing[key] = {k: v for k, v in entry.items() if k != "_score"}
+        m = entry.get("metrics", {})
+        print(f"  {key:25s}: ret={m.get('ret',0):.1f}% "
+              f"vol={m.get('vol',0):.1f}% sharpe={m.get('sharpe',0):.2f}")
+    data["precomputedOptimizer"] = existing
+    data_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    print(f"\n✓ {len(aggregated)} chaves integradas em data.json")
+
+
+if __name__ == "__main__":
+    import sys
+    args = sys.argv[1:]
+
+    if "--optimizer-slice" in args:
+        idx      = args.index("--optimizer-slice")
+        slice_i  = int(args[idx + 1])
+        n_slices = int(args[idx + 2])
+        print(f"Modo fatia k=10: {slice_i}/{n_slices}")
+        run_optimizer_slice(slice_i, n_slices)
+
+    elif "--optimizer-k35" in args:
+        print("Modo otimizador k=3+k=5")
+        run_optimizer_k35()
+
+    elif "--aggregate" in args:
+        idx      = args.index("--aggregate")
+        n_slices = int(args[idx + 1])
+        print(f"Modo agregação: {n_slices} fatias k10")
+        aggregate_optimizer_slices(n_slices)
+
+    elif "--skip-all-optimizer" in args:
+        # Job fetch: zero otimizador, idêntico ao workflow original
+        main(skip_k10=True)
+
+    elif "--skip-k10" in args:
+        # Compatibilidade com versão anterior
+        main(skip_k10=True)
+
+    else:
+        # Modo local completo
+        main(skip_k10=False)
     """
     Calcula a fatia slice_idx/n_slices das combinações C(28,10) do otimizador
     e salva o resultado em docs/opt_slice_{slice_idx}.json.
