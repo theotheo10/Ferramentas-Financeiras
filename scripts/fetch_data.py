@@ -18,6 +18,7 @@ Fontes:
 
 import json, zipfile, io, math, datetime, urllib.request, calendar, socket
 from pathlib import Path
+from itertools import combinations
 
 socket.setdefaulttimeout(12)
 
