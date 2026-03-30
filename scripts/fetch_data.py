@@ -16,8 +16,12 @@ Fontes:
   - CDI: API Banco Central (série 12)
 """
 
-import json, zipfile, io, math, datetime, urllib.request, calendar
+import json, zipfile, io, math, datetime, urllib.request, calendar, socket
 from pathlib import Path
+
+# Timeout global de socket — garante que nenhuma conexão trava mais de 12s,
+# mesmo que o servidor não retorne erro (hang TCP). Aplica a todos os fetches.
+socket.setdefaulttimeout(12)
 
 # ── Lista de fundos ────────────────────────────────────────────────────────────
 FUNDS = [
@@ -407,7 +411,7 @@ def fetch_ibov(anchor: datetime.date, a12: datetime.date, a36: datetime.date, a6
         timestamps = result["timestamp"]
         closes     = result["indicators"]["quote"][0]["close"]
         price_map  = {
-            datetime.datetime.utcfromtimestamp(ts).date().isoformat(): price
+            datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).date().isoformat(): price
             for ts, price in zip(timestamps, closes) if price is not None
         }
         dates = sorted(price_map.keys())
@@ -525,18 +529,46 @@ def fetch_ntnb() -> dict:
             "ntnb_titles":     titles,
         }
 
-    # ── Fonte 1: ANBIMA — tenta hoje, ontem e anteontem ─────────────────────
-    # O arquivo do dia só fica disponível após o fechamento do mercado (~19h BRT).
-    # Workflow roda às 12h e 18h UTC = 9h e 15h BRT — pode não ter o arquivo de hoje.
-    for delta in range(3):
-        candidate = today - datetime.timedelta(days=delta)
-        # Pula fins de semana (ANBIMA não publica)
-        if candidate.weekday() >= 5:
-            continue
-        url = "https://www.anbima.com.br/informacoes/merc-sec/arqs/ms" + candidate.strftime("%y%m%d") + ".txt"
+    # ── Fonte 1: BCB SGS série 13793 (NTN-B 2035) — rápido e confiável ────────
+    try:
+        end_str   = today.strftime("%d/%m/%Y")
+        start_str = (today - datetime.timedelta(days=10)).strftime("%d/%m/%Y")
+        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13793/dados"
+               f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        if data:
+            taxa = float(data[-1]["valor"])
+            print(f"  NTN-B BCB SGS 13793 (2035): {taxa:.2f}%")
+            return {
+                "ntnb_rate_long":   round(taxa, 4),
+                "ntnb_rate_mid":    round(taxa * 0.97, 4),
+                "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "ntnb_titles":      [{"nome": "NTN-B 2035 (SGS)", "vencimento": "2035-05-15", "taxa": taxa}],
+                "ntnb_source":      "bcb_sgs",
+            }
+    except Exception as e:
+        print(f"  ✗ NTN-B BCB SGS falhou: {e}")
+
+    # ── Fonte 2: ANBIMA — últimos 5 dias úteis ────────────────────────────────
+    # Arquivo disponível após fechamento (~19h BRT). Busca retroativamente
+    # até encontrar, pulando fins de semana corretamente.
+    def _last_business_days(n: int) -> list:
+        days = []
+        d = today
+        while len(days) < n:
+            if d.weekday() < 5:
+                days.append(d)
+            d -= datetime.timedelta(days=1)
+        return days
+
+    for candidate in _last_business_days(5):
+        url = ("https://www.anbima.com.br/informacoes/merc-sec/arqs/ms"
+               + candidate.strftime("%y%m%d") + ".txt")
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 raw = resp.read().decode("latin-1", errors="replace")
 
             titles = []
@@ -551,9 +583,9 @@ def fetch_ntnb() -> dict:
                     if "NTN-B" not in tipo or "Principal" in tipo:
                         continue
                     venc_raw = parts[2].strip()
-                    d, m, y  = venc_raw.split("/")
-                    venc_iso = f"{y}-{m}-{d}"
-                    taxa     = float(parts[5].strip().replace(",", "."))
+                    dv, mv, yv = venc_raw.split("/")
+                    venc_iso   = f"{yv}-{mv}-{dv}"
+                    taxa       = float(parts[5].strip().replace(",", "."))
                     if taxa > 0:
                         titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
                 except Exception:
@@ -568,32 +600,9 @@ def fetch_ntnb() -> dict:
                 print(f"  NTN-B ANBIMA {candidate} ({len(longs)} longas): {longs_str}")
                 print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
                 return result
-            print(f"  ✗ NTN-B ANBIMA {candidate}: sem títulos válidos no arquivo")
+            print(f"  ✗ NTN-B ANBIMA {candidate}: arquivo existe mas sem títulos válidos")
         except Exception as e:
             print(f"  ✗ NTN-B ANBIMA {candidate}: {e}")
-
-    # ── Fonte 2: BCB SGS — série 13793 (NTN-B 2035, proxy de taxa longa) ─────
-    # API REST do BCB, sempre disponível, sem bloqueio.
-    try:
-        end_str   = today.strftime("%d/%m/%Y")
-        start_str = (today - datetime.timedelta(days=10)).strftime("%d/%m/%Y")
-        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13793/dados"
-               f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-        if data:
-            taxa = float(data[-1]["valor"])
-            print(f"  NTN-B BCB SGS 13793 (2035): {taxa:.2f}%")
-            return {
-                "ntnb_rate_long":   round(taxa, 4),
-                "ntnb_rate_mid":    round(taxa * 0.97, 4),
-                "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "ntnb_titles":      [{"nome": "NTN-B 2035 (SGS)", "vencimento": "2035-05-15", "taxa": taxa}],
-                "ntnb_source":      "bcb_sgs",
-            }
-    except Exception as e:
-        print(f"  ✗ NTN-B BCB SGS falhou: {e}")
 
     print("  ✗ NTN-B: todas as fontes falharam — usando fallback")
     return FALLBACK
@@ -620,13 +629,56 @@ def fetch_ipca_focus() -> dict:
         "ipca_source":      "fallback",
     }
 
-    # ── Fonte 1: BCB Olinda — Focus (duas variantes de URL) ──────────────────
-    # Variante A: endpoint específico para IPCA (sem $filter, mais confiável)
-    # Variante B: endpoint geral com $filter literal (fallback)
-    import urllib.parse
+    # ── Fonte 1: BCB SGS série 13522 (expectativa IPCA 12M) — rápido ─────────
+    try:
+        today_d   = datetime.date.today()
+        today_year = today_d.year
+        end_str   = today_d.strftime("%d/%m/%Y")
+        start_str = (today_d - datetime.timedelta(days=30)).strftime("%d/%m/%Y")
+        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados"
+               f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        if data:
+            ipca_12m = float(data[-1]["valor"])
+            # Tenta Olinda para LP com timeout curto
+            ipca_lp = FALLBACK["ipca_longo_prazo"]
+            try:
+                url2 = ("https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
+                        "ExpectativasMercadoAnuais"
+                        "?%24filter=Indicador%20eq%20%27IPCA%27%20and%20baseCalculo%20eq%20%270%27"
+                        "&%24orderby=Data%20desc&%24top=20&%24format=json&%24select=Data%2CAno%2CMediana")
+                req2 = urllib.request.Request(url2, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+                with urllib.request.urlopen(req2, timeout=8) as resp2:
+                    raw2 = json.loads(resp2.read())
+                records = raw2.get("value") or []
+                if records:
+                    from collections import defaultdict
+                    by_ano: dict = defaultdict(dict)
+                    for r in records:
+                        if r.get("Data") and r.get("Ano") and r.get("Mediana") is not None:
+                            by_ano[r["Data"]][int(r["Ano"])] = float(r["Mediana"])
+                    if by_ano:
+                        latest = by_ano[max(by_ano.keys())]
+                        lp = latest.get(today_year+5) or latest.get(today_year+4) or latest.get(today_year+3)
+                        if lp:
+                            ipca_lp = round(lp, 2)
+                            print(f"  Focus IPCA Olinda LP={ipca_lp}%")
+            except Exception:
+                pass
+            print(f"  Focus IPCA BCB SGS: 12M={ipca_12m:.2f}% LP={ipca_lp}%")
+            return {
+                "ipca_12m":         round(ipca_12m, 2),
+                "ipca_longo_prazo": ipca_lp,
+                "ipca_fetched_at":  data[-1]["data"],
+                "ipca_source":      "bcb_sgs",
+            }
+    except Exception as e:
+        print(f"  ✗ Focus IPCA BCB SGS falhou: {e}")
 
+    # ── Fonte 2: BCB Olinda Focus (duas variantes, timeout curto) ────────────
     today_year = datetime.date.today().year
-
     for variant, url in [
         ("A", "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
               "ExpectativasMercadoAnuais"
@@ -638,74 +690,36 @@ def fetch_ipca_focus() -> dict:
               "&$orderby=Data desc&$top=50&$format=json&$select=Data,Ano,Mediana"),
     ]:
         try:
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Mozilla/5.0",
-                "Accept":     "application/json",
-            })
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 raw = json.loads(resp.read())
-
             records = raw.get("value") or []
             if not records:
-                print(f"  ✗ Focus IPCA Olinda variante {variant}: retornou vazio")
                 continue
-
             from collections import defaultdict
             by_date_ano: dict = defaultdict(dict)
             for r in records:
-                d   = r.get("Data", "")
-                ano = r.get("Ano")
-                med = r.get("Mediana")
+                d = r.get("Data",""); ano = r.get("Ano"); med = r.get("Mediana")
                 if d and ano and med is not None:
                     by_date_ano[d][int(ano)] = float(med)
-
             if not by_date_ano:
                 continue
-
             latest_date = max(by_date_ano.keys())
             by_ano      = by_date_ano[latest_date]
-            ipca_12m    = by_ano.get(today_year + 1) or by_ano.get(today_year)
-            ipca_lp     = (by_ano.get(today_year + 5) or by_ano.get(today_year + 4)
-                           or by_ano.get(today_year + 3))
-
+            ipca_12m    = by_ano.get(today_year+1) or by_ano.get(today_year)
+            ipca_lp     = by_ano.get(today_year+5) or by_ano.get(today_year+4) or by_ano.get(today_year+3)
             if not ipca_12m:
                 continue
-
             result = {
                 "ipca_12m":         round(ipca_12m, 2),
                 "ipca_longo_prazo": round(ipca_lp, 2) if ipca_lp else FALLBACK["ipca_longo_prazo"],
                 "ipca_fetched_at":  latest_date,
                 "ipca_source":      "focus",
             }
-            print(f"  Focus IPCA variante {variant}: 12M={result['ipca_12m']}% LP={result['ipca_longo_prazo']}% (ref. {latest_date})")
+            print(f"  Focus IPCA Olinda {variant}: 12M={result['ipca_12m']}% LP={result['ipca_longo_prazo']}%")
             return result
-
         except Exception as e:
-            print(f"  ✗ Focus IPCA Olinda variante {variant}: {e}")
-
-    # ── Fonte 2: BCB SGS série 13522 — expectativa IPCA 12M ──────────────────
-    # Série pública do BCB sem bloqueio. Usa como proxy de 12M;
-    # longo prazo = meta do CMN (3.0%) como âncora conservadora.
-    try:
-        today     = datetime.date.today()
-        end_str   = today.strftime("%d/%m/%Y")
-        start_str = (today - datetime.timedelta(days=30)).strftime("%d/%m/%Y")
-        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados"
-               f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-        if data:
-            ipca_12m = float(data[-1]["valor"])
-            print(f"  Focus IPCA BCB SGS 13522: 12M={ipca_12m:.2f}% LP=3.0% (meta CMN)")
-            return {
-                "ipca_12m":         round(ipca_12m, 2),
-                "ipca_longo_prazo": 3.0,   # meta CMN como âncora de LP
-                "ipca_fetched_at":  data[-1]["data"],
-                "ipca_source":      "bcb_sgs",
-            }
-    except Exception as e:
-        print(f"  ✗ Focus IPCA BCB SGS falhou: {e}")
+            print(f"  ✗ Focus IPCA Olinda {variant}: {e}")
 
     print("  ✗ Focus IPCA: todas as fontes falharam — usando fallback")
     return FALLBACK
@@ -2736,7 +2750,7 @@ def fetch_sp500(anchor: datetime.date, a12: datetime.date, a36: datetime.date, a
         timestamps = result["timestamp"]
         closes     = result["indicators"]["quote"][0]["close"]
         return {
-            datetime.datetime.utcfromtimestamp(ts).date().isoformat(): price
+            datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).date().isoformat(): price
             for ts, price in zip(timestamps, closes) if price is not None
         }
 
@@ -2810,7 +2824,7 @@ def fetch_daily_index_returns(anchor: datetime.date, history_start_year: int) ->
         result = data["chart"]["result"][0]
         ts     = result["timestamp"]
         closes = result["indicators"]["quote"][0]["close"]
-        return {datetime.datetime.utcfromtimestamp(t).date().isoformat(): p
+        return {datetime.datetime.fromtimestamp(t, datetime.timezone.utc).date().isoformat(): p
                 for t, p in zip(ts, closes) if p is not None}
 
     def prices_to_returns(prices: dict) -> dict:
