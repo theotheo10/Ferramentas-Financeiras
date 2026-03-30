@@ -3330,6 +3330,7 @@ function toggleTheme() {
 let funds        = [];
 let ibov         = { cagr12: null, cagr36: null, cagr60: null };
 let fundBetas    = {};
+let jensenAlphaMap = {};
 let sp500        = { cagr12: null, cagr36: null, cagr60: null };
 let cdi          = { cagr12: null, cagr36: null, cagr60: null };
 // NTN-B: taxa real das NTN-B longas (Tesouro IPCA+) — âncora de juro real estrutural.
@@ -4368,6 +4369,7 @@ async function load() {
     if (data.ntnb)        ntnb       = data.ntnb;
     if (data.ipca_focus)  ipcaFocus  = data.ipca_focus;
     if (data.fund_betas)  fundBetas  = data.fund_betas;
+    if (data.jensenAlpha) jensenAlphaMap = data.jensenAlpha;
     updateHeaders();
     render();
     initMCSelect();
@@ -12277,6 +12279,9 @@ function updateBetaAdjNote() {
 }
 
 function getBetaAdjustedMu(cnpj) {
+  // Usa Jensen's alpha pré-calculado pelo script quando disponível
+  if (jensenAlphaMap && jensenAlphaMap[cnpj] != null) return jensenAlphaMap[cnpj];
+  // Fallback: calcula no browser
   // Jensen's alpha = CAGR_fund - [CDI + beta * (IBOV - CDI)]
   const m = getAdvMetrics(cnpj);
   if (!m) return null;
