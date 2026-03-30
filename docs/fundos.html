@@ -3330,6 +3330,12 @@ function toggleTheme() {
 let funds        = [];
 let ibov         = { cagr12: null, cagr36: null, cagr60: null };
 let fundBetas    = {};
+// ── Otimizador pré-computado (carregado de data.json) ─────────────────────────
+// Contém 36 resultados padrão (6 objetivos × 3 tamanhos × normal/betaadj)
+// calculados pelo fetch_data.py. Evita milhões de combinações no browser
+// quando não há restrições customizadas ativas.
+let precomputedOptimizer = {};
+let jensenAlphaMap       = {};
 let sp500        = { cagr12: null, cagr36: null, cagr60: null };
 let cdi          = { cagr12: null, cagr36: null, cagr60: null };
 // NTN-B: taxa real das NTN-B longas (Tesouro IPCA+) — âncora de juro real estrutural.
@@ -4368,6 +4374,8 @@ async function load() {
     if (data.ntnb)        ntnb       = data.ntnb;
     if (data.ipca_focus)  ipcaFocus  = data.ipca_focus;
     if (data.fund_betas)  fundBetas  = data.fund_betas;
+    if (data.precomputedOptimizer) precomputedOptimizer = data.precomputedOptimizer;
+    if (data.jensenAlpha)          jensenAlphaMap       = data.jensenAlpha;
     updateHeaders();
     render();
     initMCSelect();
@@ -12277,6 +12285,9 @@ function updateBetaAdjNote() {
 }
 
 function getBetaAdjustedMu(cnpj) {
+  // Usa Jensen's alpha pré-calculado pelo script quando disponível
+  if (jensenAlphaMap && jensenAlphaMap[cnpj] != null) return jensenAlphaMap[cnpj];
+  // Fallback: calcula no browser (mesmo resultado, mas requer historyData)
   // Jensen's alpha = CAGR_fund - [CDI + beta * (IBOV - CDI)]
   const m = getAdvMetrics(cnpj);
   if (!m) return null;
@@ -12414,6 +12425,93 @@ runOptimizer = function() {
     btn.disabled = false;
   }, 20);
 };
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// OTIMIZADOR PRÉ-COMPUTADO — cache instantâneo para casos padrão
+//
+// Quando não há restrições customizadas ativas e o universo é o completo,
+// usa diretamente o resultado pré-calculado pelo fetch_data.py em vez de
+// rodar milhões de combinações no browser. O cálculo cai de ~7s para <10ms.
+//
+// Condições para usar o cache:
+//   1. precomputedOptimizer carregado de data.json
+//   2. Sem restrições de beta, stress, retorno mínimo ou retorno líquido
+//   3. Pesos padrão: optMaxW = 1.0, optMinW ≤ 0.01
+//   4. Universo completo (sem exclusões manuais nem filtros de tipo/expo/trib)
+// ════════════════════════════════════════════════════════════════════════════
+(function() {
+  const _runOptimizerFinal = runOptimizer;
+
+  function _hasCustomConstraints() {
+    if (optMaxBetaIbov !== null)   return true;
+    if (optMaxBetaSp   !== null)   return true;
+    if (optMaxStressLoss !== null)  return true;
+    if (optMinTargetRet  !== null)  return true;
+    if (optMinNetRet     !== null)  return true;
+    if (optMaxW < 0.999)            return true;  // peso máx customizado
+    if (optMinW > 0.011)            return true;  // peso mín acima do padrão
+    return false;
+  }
+
+  function _isFullUniverse() {
+    if (!historyData) return false;
+    const allCnpjs = Object.keys(historyData.funds);
+    if (optUniExcluded.size > 0) return false;
+    // Verifica se filtros de tipo/expo/trib estão nos defaults
+    const defaultTipo = new Set(['Long Only', 'Long Biased', 'Multimercado', 'Renda Fixa']);
+    const defaultExpo = new Set(['Brasil', 'Internacional', 'Majoritariamente']);
+    const defaultTrib = new Set(['RV', 'TR', 'Isento']);
+    for (const t of defaultTipo) if (!optUniFilters.tipo.has(t)) return false;
+    for (const e of defaultExpo) if (!optUniFilters.expo.has(e)) return false;
+    for (const t of defaultTrib) if (!optUniFilters.trib.has(t)) return false;
+    // Verifica perf filters nos defaults (sem limites de anos/target/vol/dd)
+    const minYears  = parseFloat(document.getElementById('optUniMinYears')?.value)  || null;
+    const minTarget = parseFloat(document.getElementById('optUniMinTarget')?.value) || null;
+    const maxVol    = parseFloat(document.getElementById('optUniMaxVol')?.value)    || null;
+    const maxDD     = parseFloat(document.getElementById('optUniMaxDD')?.value)     || null;
+    if (minYears || minTarget || maxVol || maxDD) return false;
+    return true;
+  }
+
+  runOptimizer = function() {
+    // Verifica se pode usar cache pré-computado
+    const useBetaAdj = document.getElementById('optBetaAdj')?.checked;
+    const cacheKey   = (useBetaAdj ? 'betaadj_' : '') + optObj + '_' + optN;
+    const cached     = precomputedOptimizer[cacheKey];
+
+    if (cached && !_hasCustomConstraints() && _isFullUniverse()) {
+      // ── Resultado instantâneo do cache ────────────────────────────────────
+      const btn    = document.getElementById('optRunBtn');
+      const status = document.getElementById('optStatus');
+
+      const m = cached.metrics || {};
+      const metricStr =
+        optObj === 'vol'     ? `vol ${(m.vol     ?? 0).toFixed(1)}%`        :
+        optObj === 'sharpe'  ? `Sharpe ${(m.sharpe  ?? 0).toFixed(2)}`      :
+        optObj === 'return'  ? `retorno ${(m.ret     ?? 0).toFixed(1)}%`    :
+        optObj === 'sortino' ? `Sortino ${(m.sortino ?? 0).toFixed(2)}`     :
+        optObj === 'calmar'  ? `Calmar ${(m.calmar   ?? 0).toFixed(2)}`     :
+        optObj === 'ir'      ? `IR ${(m.ir         ?? 0).toFixed(2)}`       :
+                               `Sharpe ${(m.sharpe  ?? 0).toFixed(2)}`;
+
+      const adjNote = useBetaAdj ? ' [beta-adj]' : '';
+      const n = cached.cnpjs.length;
+      status.textContent =
+        `pré-calculado · ${metricStr}${adjNote} · ` +
+        cached.cnpjs.map((c, i) =>
+          `${shortName(c)} ${Math.round((cached.weights[i] || 0) * 100)}%`
+        ).join(' · ');
+
+      applyOptimizedPortfolio(cached.cnpjs, cached.weights);
+      syncHorizonSliderFromOptimizer(10);
+      return;
+    }
+
+    // Sem cache: roda o otimizador completo normalmente
+    _runOptimizerFinal();
+  };
+})();
 
 
 

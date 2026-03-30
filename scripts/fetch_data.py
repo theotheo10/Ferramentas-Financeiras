@@ -2323,6 +2323,337 @@ def reconstruct_max_quotas_from_history(hist_path: Path) -> dict:
         return {}
 
 
+def compute_precomputed_optimizer(
+    results:      list,
+    fund_betas:   dict,
+    jensen_alpha: dict,
+    hist:         dict,
+    cdi_annual:   float,
+    ibov_annual:  float,
+) -> dict:
+    """
+    Pré-computa os resultados padrão do otimizador de portfólio.
+
+    Objetivos: sharpe, vol, return, sortino, calmar, ir  × tamanhos: 3, 5, 10
+    × modo: normal, betaadj  →  36 chaves no total.
+
+    Universo: todos os fundos com targetReturn disponível (mesmo universo
+    padrão do browser antes de qualquer filtro de UI).
+
+    Restrições: padrões do browser (optMaxW=1.0, optMinW=0.01, sem beta/stress).
+    Sem exclusões de correlação ou filtros de tipo/expo/trib.
+
+    Retorna dict: { "sharpe_3": {cnpjs:[...], weights:[...], metrics:{...}}, ... }
+    """
+    import random as _rnd
+
+    # ── Construir mu_map normal (targetReturn de cada fundo) ─────────────────
+    # Replica a lógica de calcTargetReturn do JS usando os dados já calculados
+    # pelo script — especificamente o campo targetReturn do metricsHistory mais
+    # recente (que é a âncora usada pelo browser para o otimizador).
+    mu_map_normal: dict[str, float] = {}
+    for r in results:
+        if r.get("error"):
+            continue
+        cnpj = r.get("cnpjFmt")
+        if not cnpj:
+            continue
+        # targetReturn já está em r (calculado por process_fund / metricsHistory)
+        # Usa o campo "targetReturn" se disponível, senão aproxima via cagr36
+        tr = r.get("targetReturn")
+        if tr is None:
+            tr = r.get("cagr36") or r.get("cagr12")
+        if tr is not None:
+            mu_map_normal[cnpj] = float(tr)
+
+    # ── Construir mu_map beta-adjusted (Jensen's alpha) ─────────────────────
+    mu_map_betaadj: dict[str, float] = {
+        cnpj: float(ja)
+        for cnpj, ja in jensen_alpha.items()
+        if ja is not None
+    }
+
+    # ── Matrizes de covariância e semi-covariância do history.json ───────────
+    cov_full      = hist.get("covMatrix", {})
+    semi_cov_full = hist.get("semiCovMatrix", {})
+
+    def get_cov(cnpjs: list, use_semi: bool = False) -> list:
+        src = semi_cov_full if use_semi else cov_full
+        k   = len(cnpjs)
+        mat = [[0.0] * k for _ in range(k)]
+        for i, ci in enumerate(cnpjs):
+            for j, cj in enumerate(cnpjs):
+                v = (src.get(ci) or {}).get(cj)
+                mat[i][j] = float(v) if v is not None else 0.0
+        return mat
+
+    # ── Retornos diários para Sortino/Calmar ─────────────────────────────────
+    common_dates = hist.get("commonDates", [])
+    funds_hist   = hist.get("funds", {})
+
+    def get_returns(cnpj: str) -> list:
+        fd = funds_hist.get(cnpj, {})
+        return fd.get("returns", [])
+
+    def first_real_idx(cnpj: str) -> int:
+        rets = get_returns(cnpj)
+        for i, r in enumerate(rets):
+            if r is not None:
+                return i
+        return len(rets)
+
+    # ── Helpers de álgebra linear (mirrors JS) ───────────────────────────────
+    def _mat_vec(M: list, v: list) -> list:
+        n = len(v)
+        return [sum(M[i][j] * v[j] for j in range(n)) for i in range(n)]
+
+    def _invert(M: list) -> list | None:
+        n = len(M)
+        aug = [M[i][:] + [1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+        for col in range(n):
+            pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
+            aug[col], aug[pivot] = aug[pivot], aug[col]
+            if abs(aug[col][col]) < 1e-12:
+                return None
+            f = aug[col][col]
+            aug[col] = [x / f for x in aug[col]]
+            for row in range(n):
+                if row == col:
+                    continue
+                fac = aug[row][col]
+                aug[row] = [aug[row][j] - fac * aug[col][j] for j in range(2 * n)]
+        return [row[n:] for row in aug]
+
+    def min_vol_w(cov: list) -> list | None:
+        n      = len(cov)
+        active = list(range(n))
+        for _ in range(n):
+            k    = len(active)
+            if k == 0:
+                return None
+            sub  = [[cov[active[i]][active[j]] for j in range(k)] for i in range(k)]
+            inv  = _invert(sub)
+            if not inv:
+                return None
+            ones = [1.0] * k
+            iv   = _mat_vec(inv, ones)
+            denom = sum(iv)
+            if abs(denom) < 1e-12:
+                return None
+            ws = [x / denom for x in iv]
+            if all(x >= -1e-10 for x in ws):
+                ws = [max(0.0, x) for x in ws]
+                tot = sum(ws)
+                if tot <= 0:
+                    return None
+                full = [0.0] * n
+                for idx, orig in enumerate(active):
+                    full[orig] = ws[idx] / tot
+                return full
+            minidx = ws.index(min(ws))
+            active.pop(minidx)
+        return None
+
+    def max_sharpe_w(mus: list, rf: float, cov: list) -> list | None:
+        n      = len(mus)
+        active = list(range(n))
+        for _ in range(n):
+            k    = len(active)
+            if k == 0:
+                return None
+            sub    = [[cov[active[i]][active[j]] for j in range(k)] for i in range(k)]
+            submus = [mus[active[i]] for i in range(k)]
+            excess = [m - rf for m in submus]
+            if all(e <= 0 for e in excess):
+                return None
+            inv = _invert(sub)
+            if not inv:
+                return None
+            raw = _mat_vec(inv, excess)
+            tot = sum(raw)
+            if abs(tot) < 1e-12:
+                return None
+            ws = [x / tot for x in raw]
+            if all(x >= -1e-10 for x in ws):
+                ws = [max(0.0, x) for x in ws]
+                tot2 = sum(ws)
+                if tot2 <= 0:
+                    return None
+                full = [0.0] * n
+                for idx, orig in enumerate(active):
+                    full[orig] = ws[idx] / tot2
+                return full
+            minidx = ws.index(min(ws))
+            active.pop(minidx)
+        return None
+
+    def max_return_w(mus: list) -> list:
+        n   = len(mus)
+        idx = mus.index(max(mus))
+        return [1.0 if i == idx else 0.0 for i in range(n)]
+
+    def max_sortino_w(cnpjs: list, mus: list, rf: float, cov: list) -> list | None:
+        # Semi-cov matrix via history
+        sc = get_cov(cnpjs, use_semi=True)
+        if all(sc[i][i] == 0.0 for i in range(len(cnpjs))):
+            return max_sharpe_w(mus, rf, cov)
+        return max_sharpe_w(mus, rf, sc)
+
+    def dot(a: list, b: list) -> float:
+        return sum(x * y for x, y in zip(a, b))
+
+    def port_vol(w: list, cov: list) -> float:
+        n  = len(w)
+        v2 = sum(w[i] * w[j] * cov[i][j] for i in range(n) for j in range(n))
+        return math.sqrt(max(0.0, v2))
+
+    def eval_portfolio(cnpjs: list, w: list, mus: list, rf: float, ibov: float,
+                       cov: list) -> dict:
+        """Computa métricas completas de um portfólio — mirrors evalPortfolioAdvanced."""
+        ret    = dot(w, mus)
+        vol    = port_vol(w, cov)
+        sharpe = (ret - rf) / vol if vol > 0 else -math.inf
+
+        n       = len(get_returns(cnpjs[0]))
+        cdi_d   = math.pow(1 + rf / 100, 1 / 252) - 1
+        fi_map  = {c: first_real_idx(c) for c in cnpjs}
+        rets_by = {c: get_returns(c) for c in cnpjs}
+
+        semi_sq = 0.0
+        cum = peak = 1.0
+        max_dd = 0.0
+        for t in range(n):
+            rp = sum(w[i] * (rets_by[c][t] if t >= fi_map[c] and rets_by[c][t] is not None else 0.0)
+                     for i, c in enumerate(cnpjs))
+            excess = rp - cdi_d
+            if excess < 0:
+                semi_sq += excess * excess
+            cum *= (1 + rp)
+            if cum > peak:
+                peak = cum
+            dd = (cum - peak) / peak
+            if dd < max_dd:
+                max_dd = dd
+
+        semi_vol  = math.sqrt(semi_sq / n) * math.sqrt(252) * 100 if n > 0 else 0.0
+        sortino   = (ret - rf) / semi_vol if semi_vol > 0 else -math.inf
+        cagr_hist = (math.pow(cum, 252 / n) - 1) * 100 if n > 0 else 0.0
+        calmar    = cagr_hist / abs(max_dd * 100) if max_dd < 0 else cagr_hist / 0.001
+        ir        = (ret - ibov) / vol if vol > 0 else -math.inf
+
+        return {
+            "ret": ret, "vol": vol, "sharpe": sharpe,
+            "sortino": sortino, "calmar": calmar, "ir": ir,
+            "semiVol": semi_vol, "maxDD": max_dd * 100, "cagrHist": cagr_hist,
+        }
+
+    # ── Gerar todas as combinações C(n,k) ────────────────────────────────────
+    def combinations(pool: list, r: int):
+        n = len(pool)
+        if r > n:
+            return
+        indices = list(range(r))
+        yield [pool[i] for i in indices]
+        while True:
+            for i in range(r - 1, -1, -1):
+                if indices[i] != i + n - r:
+                    break
+            else:
+                return
+            indices[i] += 1
+            for j in range(i + 1, r):
+                indices[j] = indices[j - 1] + 1
+            yield [pool[i] for i in indices]
+
+    # ── Loop principal ────────────────────────────────────────────────────────
+    OBJECTIVES = ["sharpe", "vol", "return", "sortino", "calmar", "ir"]
+    SIZES      = [3, 5, 10]
+    OPT_HORIZONTE_RF = 10.0   # mirrors JS OPT_HORIZONTE = 10
+
+    output: dict = {}
+
+    for mode in ("normal", "betaadj"):
+        mu_map = mu_map_normal if mode == "normal" else mu_map_betaadj
+        # CDI target: normal usa CDI ponderado; beta-adj usa 0 (alpha já é excesso)
+        rf = cdi_annual if mode == "normal" else 0.0
+
+        valid_cnpjs = [c for c, mu in mu_map.items()
+                       if mu is not None and math.isfinite(mu)
+                       and c in cov_full and c in funds_hist]
+
+        for k in SIZES:
+            if k > len(valid_cnpjs):
+                continue
+            mus_all = [mu_map[c] for c in valid_cnpjs]
+
+            for obj in OBJECTIVES:
+                key = f"{'betaadj_' if mode == 'betaadj' else ''}{obj}_{k}"
+
+                best: dict | None = None
+                best_score: float = -math.inf
+
+                for combo in combinations(valid_cnpjs, k):
+                    mus = [mu_map[c] for c in combo]
+                    cov = get_cov(combo)
+
+                    # Pesos
+                    if obj == "vol":
+                        w = min_vol_w(cov)
+                    elif obj == "return":
+                        w = max_return_w(mus)
+                    elif obj == "sortino":
+                        w = max_sortino_w(combo, mus, rf, cov)
+                        if not w:
+                            w = max_sharpe_w(mus, rf, cov)
+                    elif obj in ("calmar", "stress"):
+                        w = max_sharpe_w(mus, rf, cov)
+                    elif obj == "ir":
+                        w = max_sharpe_w(mus, ibov_annual, cov)
+                    else:  # sharpe
+                        w = max_sharpe_w(mus, rf, cov)
+                        if not w:
+                            w = min_vol_w(cov)
+
+                    if not w:
+                        w = [1.0 / k] * k
+
+                    # Clip optMinW=0.01 default
+                    OPT_MIN_W = 0.01
+                    w = [max(OPT_MIN_W, x) for x in w]
+                    tot = sum(w)
+                    w = [x / tot for x in w]
+
+                    m = eval_portfolio(combo, w, mus, rf, ibov_annual, cov)
+
+                    score = {
+                        "vol":     -m["vol"],
+                        "sharpe":   m["sharpe"],
+                        "return":   m["ret"],
+                        "sortino":  m["sortino"],
+                        "calmar":   m["calmar"],
+                        "ir":       m["ir"],
+                    }.get(obj, m["sharpe"])
+
+                    if score > best_score:
+                        best_score = score
+                        best = {"cnpjs": combo, "weights": w, "metrics": m}
+
+                if best:
+                    output[key] = {
+                        "cnpjs":   best["cnpjs"],
+                        "weights": [round(x, 6) for x in best["weights"]],
+                        "metrics": {
+                            k2: round(v, 4) if isinstance(v, float) and math.isfinite(v) else None
+                            for k2, v in best["metrics"].items()
+                        },
+                    }
+                    m = best["metrics"]
+                    print(f"  {key:25s}: {best['cnpjs'][0][-9:]}… "
+                          f"ret={m['ret']:.1f}% vol={m['vol']:.1f}% sharpe={m['sharpe']:.2f}")
+
+    return output
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 
@@ -2727,16 +3058,67 @@ def main() -> None:
         except Exception as _e:
             print(f"  ⚠ CDI fallback falhou: {_e}")
 
+    # ── Jensen's alpha por fundo ─────────────────────────────────────────────────
+    # α_Jensen = CAGR_fundo − [CDI + β × (IBOV − CDI)]
+    # Usado pelo otimizador beta-adjusted. Pré-computado aqui para evitar
+    # recalcular no browser a cada clique em "Otimizar".
+    _cdi_ann  = cdi_final.get("cagr36") or cdi_final.get("cagr12") or 12.0
+    _ibov_ann = ibov.get("cagr36") or ibov.get("cagr12") or 15.0
+    jensen_alpha = {}
+    for r in results:
+        if r.get("error"):
+            continue
+        cnpj = r.get("cnpjFmt")
+        if not cnpj or cnpj not in fund_betas:
+            continue
+        b = fund_betas[cnpj]
+        beta_ibov = b.get("beta_ibov")
+        if beta_ibov is None:
+            continue
+        # Usa cagrInception se disponível (mais estável), senão cagr36, senão cagr12
+        fund_cagr = r.get("cagrInception") or r.get("cagr36") or r.get("cagr12")
+        if fund_cagr is None:
+            continue
+        ja = fund_cagr - (_cdi_ann + beta_ibov * (_ibov_ann - _cdi_ann))
+        jensen_alpha[cnpj] = round(ja, 4)
+    print(f"\n── Jensen's alpha: {len(jensen_alpha)} fundos calculados")
+
+    # ── Otimizador pré-computado ──────────────────────────────────────────────────
+    # Pré-computa os 36 resultados padrão (6 objetivos × 3 tamanhos × com/sem beta-adj)
+    # com o universo completo e sem restrições customizadas.
+    # O browser usa esses resultados diretamente quando não há sliders ativos,
+    # eliminando o cálculo de milhões de combinações no client-side.
+    print(f"\n── Otimizador pré-computado")
+    try:
+        _hist_for_opt = json.loads(hist_path.read_text())
+        precomputed_optimizer = compute_precomputed_optimizer(
+            results        = results,
+            fund_betas     = fund_betas,
+            jensen_alpha   = jensen_alpha,
+            hist           = _hist_for_opt,
+            cdi_annual     = _cdi_ann,
+            ibov_annual    = _ibov_ann,
+        )
+        n_precomp = sum(len(v) for v in precomputed_optimizer.values())
+        print(f"  {n_precomp} portfólios pré-computados")
+    except Exception as _oe:
+        import traceback
+        print(f"  ⚠ otimizador pré-computado falhou: {_oe}")
+        traceback.print_exc()
+        precomputed_optimizer = {}
+
     data_out = {
-        "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "anchorDate":  anchor.isoformat(),
-        "ibov":        ibov,
-        "cdi":         cdi_final,
-        "sp500":       sp500,
-        "ntnb":        ntnb,
-        "ipca_focus":  ipca_focus,
-        "fund_betas":  fund_betas,
-        "funds":       results,
+        "generatedAt":          datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "anchorDate":           anchor.isoformat(),
+        "ibov":                 ibov,
+        "cdi":                  cdi_final,
+        "sp500":                sp500,
+        "ntnb":                 ntnb,
+        "ipca_focus":           ipca_focus,
+        "fund_betas":           fund_betas,
+        "jensenAlpha":          jensen_alpha,
+        "precomputedOptimizer": precomputed_optimizer,
+        "funds":                results,
     }
 
     out_path.parent.mkdir(exist_ok=True)
