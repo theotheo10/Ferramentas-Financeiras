@@ -479,18 +479,19 @@ def fetch_cdi(anchor: datetime.date, a12: datetime.date, a36: datetime.date, a60
 
 def fetch_ntnb() -> dict:
     """
-    Busca as taxas atuais das NTN-B (Tesouro IPCA+) via CSV público do Tesouro Direto.
+    Busca as taxas atuais das NTN-B (Tesouro IPCA+).
+
+    Fontes em ordem de prioridade:
+      1. ANBIMA API pública — dados de mercado secundário, sem bloqueio de bot
+      2. BCB SGS série 13793 — NTN-B 2035 (proxy de taxa longa, sempre disponível)
 
     Retorna dict com:
-      ntnb_rate_long:  média das taxas reais das NTN-B de vencimento >= 2035 (%)
+      ntnb_rate_long:  média das taxas reais das NTN-B de vencimento >= 8 anos (%)
       ntnb_rate_mid:   taxa da NTN-B mais próxima de 5 anos de prazo (%)
       ntnb_fetched_at: ISO datetime do fetch
       ntnb_titles:     lista [{nome, vencimento, taxa}] para debug
-
-    Em caso de falha, retorna valores fallback conhecidos (~mar/2026).
-    O CSV público do Tesouro Direto é acessível sem autenticação.
+      ntnb_source:     "anbima" | "bcb_sgs" | "fallback"
     """
-    # Fallback calibrado com dados de mar/2026 (NTN-B 2035: ~7.05%, 2040/2045: ~7.0%)
     FALLBACK = {
         "ntnb_rate_long":   7.05,
         "ntnb_rate_mid":    6.90,
@@ -498,122 +499,152 @@ def fetch_ntnb() -> dict:
         "ntnb_titles":      [],
         "ntnb_source":      "fallback",
     }
+
+    today = datetime.date.today()
+    horizon_long = today.replace(year=today.year + 8)
+    horizon_5y   = today.replace(year=today.year + 5)
+
+    def _process_titles(titles: list) -> dict | None:
+        """Dado lista de {nome, vencimento, taxa}, calcula long e mid."""
+        if not titles:
+            return None
+        longs = [t for t in titles
+                 if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
+        mids  = [t for t in titles
+                 if abs((datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days) < 730]
+        ntnb_long = sum(t["taxa"] for t in longs) / len(longs) if longs else None
+        ntnb_mid  = min(mids, key=lambda t: abs(
+            (datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days
+        ))["taxa"] if mids else None
+        if not ntnb_long:
+            return None
+        return {
+            "ntnb_rate_long":  round(ntnb_long, 4),
+            "ntnb_rate_mid":   round(ntnb_mid, 4) if ntnb_mid else round(ntnb_long, 4),
+            "ntnb_fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "ntnb_titles":     titles,
+        }
+
+    # ── Fonte 1: ANBIMA API de mercado secundário ─────────────────────────────
+    # Endpoint público, sem autenticação, sem bloqueio de bot.
+    # Retorna taxas indicativas de NTN-B do mercado secundário (ANBIMA).
     try:
-        # CSV público: taxas para investir (Tesouro Direto, atualizado diariamente)
-        # Formato: Tipo Titulo;Vencimento do Titulo;Taxa Anual;Valor Minimo;Valor do Titulo
-        url = "https://www.tesourodireto.com.br/json/br/com/b3/tesourodireto/pte/rest/api/v1/home.json"
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json",
-            "Referer": "https://www.tesourodireto.com.br/",
-        })
+        url = "https://www.anbima.com.br/informacoes/merc-sec/arqs/ms" + today.strftime("%y%m%d") + ".txt"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = json.loads(resp.read())
+            raw = resp.read().decode("latin-1", errors="replace")
 
         titles = []
-        # A estrutura do JSON é: response.TrsrBdTradgList[].TrsrBd
-        bond_list = (raw.get("response") or {}).get("TrsrBdTradgList") or []
-        for item in bond_list:
-            bd = item.get("TrsrBd") or {}
-            nome = bd.get("nm", "")
-            if "IPCA" not in nome.upper():
+        for line in raw.splitlines():
+            # Formato ANBIMA: campos separados por @
+            # Título@Ref.NTN-B@Vencimento@TaxaCompra@TaxaVenda@TaxaIndicativa@...
+            if "NTN-B" not in line:
+                continue
+            parts = line.split("@")
+            if len(parts) < 6:
                 continue
             try:
-                venc_str = bd.get("mtrtyDt", "")[:10]   # "YYYY-MM-DD"
-                venc = datetime.date.fromisoformat(venc_str)
-                taxa = float(bd.get("anulInvstmtRate") or 0)
+                tipo  = parts[0].strip()
+                if "NTN-B" not in tipo or "Principal" in tipo:
+                    continue
+                venc_raw = parts[2].strip()  # DD/MM/AAAA
+                d, m, y  = venc_raw.split("/")
+                venc_iso = f"{y}-{m}-{d}"
+                taxa     = float(parts[5].strip().replace(",", "."))
                 if taxa > 0:
-                    titles.append({"nome": nome, "vencimento": venc_str, "taxa": taxa})
+                    titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
             except Exception:
                 continue
 
-        if not titles:
-            print("  ✗ NTN-B: nenhum título IPCA+ encontrado no JSON")
-            return FALLBACK
-
-        # Taxa "longa": média das NTN-B com vencimento >= 8 anos a partir de hoje
-        today = datetime.date.today()
-        horizon_long = today.replace(year=today.year + 8)
-        longs = [t for t in titles if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
-        ntnb_long = sum(t["taxa"] for t in longs) / len(longs) if longs else None
-
-        # Taxa "mid": NTN-B mais próxima de prazo de 5 anos (±2 anos)
-        horizon_5y = today.replace(year=today.year + 5)
-        mids = [t for t in titles
-                if abs((datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days) < 730]
-        ntnb_mid = min(mids, key=lambda t: abs((datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days))["taxa"] if mids else None
-
-        result = {
-            "ntnb_rate_long":   round(ntnb_long, 4) if ntnb_long else FALLBACK["ntnb_rate_long"],
-            "ntnb_rate_mid":    round(ntnb_mid,  4) if ntnb_mid  else FALLBACK["ntnb_rate_mid"],
-            "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "ntnb_titles":      titles,
-            "ntnb_source":      "live",
-        }
-        longs_str = ", ".join(f"{t['vencimento']}={t['taxa']:.2f}%" for t in longs)
-        print(f"  NTN-B longa ({len(longs)} títulos): {longs_str}")
-        print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
-        return result
-
+        result = _process_titles(titles)
+        if result:
+            result["ntnb_source"] = "anbima"
+            longs = [t for t in titles
+                     if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
+            longs_str = ", ".join(f"{t['vencimento']}={t['taxa']:.2f}%" for t in longs)
+            print(f"  NTN-B ANBIMA ({len(longs)} longas): {longs_str}")
+            print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
+            return result
+        print("  ✗ NTN-B ANBIMA: sem títulos válidos")
     except Exception as e:
-        print(f"  ✗ NTN-B falhou: {e} — usando fallback")
-        return FALLBACK
+        print(f"  ✗ NTN-B ANBIMA falhou: {e}")
+
+    # ── Fonte 2: BCB SGS — série 13793 (NTN-B 2035, proxy de taxa longa) ─────
+    # API REST do BCB, sempre disponível, sem bloqueio.
+    try:
+        end_str   = today.strftime("%d/%m/%Y")
+        start_str = (today - datetime.timedelta(days=10)).strftime("%d/%m/%Y")
+        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13793/dados"
+               f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        if data:
+            taxa = float(data[-1]["valor"])
+            print(f"  NTN-B BCB SGS 13793 (2035): {taxa:.2f}%")
+            return {
+                "ntnb_rate_long":   round(taxa, 4),
+                "ntnb_rate_mid":    round(taxa * 0.97, 4),  # proxy mid ligeiramente menor
+                "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "ntnb_titles":      [{"nome": "NTN-B 2035 (SGS)", "vencimento": "2035-05-15", "taxa": taxa}],
+                "ntnb_source":      "bcb_sgs",
+            }
+    except Exception as e:
+        print(f"  ✗ NTN-B BCB SGS falhou: {e}")
+
+    print("  ✗ NTN-B: todas as fontes falharam — usando fallback")
+    return FALLBACK
 
 
 def fetch_ipca_focus() -> dict:
     """
     Busca a expectativa de IPCA de longo prazo do Focus (BCB) via Olinda API.
 
+    Fontes em ordem de prioridade:
+      1. BCB Olinda — ExpectativasMercadoAnuais (Focus, atualizado semanalmente)
+      2. BCB SGS — série 13522 (IPCA 12M esperado, proxy) + meta CMN como LP
+
     Retorna dict com:
       ipca_12m:          mediana do Focus para IPCA nos próximos 12 meses (%)
       ipca_longo_prazo:  mediana do Focus para IPCA em 5 anos à frente (%)
       ipca_fetched_at:   ISO datetime do fetch
-      ipca_source:       "live" | "fallback"
-
-    Fonte: BCB Olinda — Expectativas de Mercado (Focus), série anual.
-    Endpoint público, sem autenticação. Atualizado semanalmente (sextas-feiras).
-
-    Por que Focus e não inflação implícita dos títulos (NTN-B vs LTN)?
-      A inflação implícita (break-even) = taxa_LTN / taxa_NTN-B − 1 não é uma
-      medida limpa de expectativa de inflação porque:
-        1. LTN e NTN-B carregam prêmios de risco diferentes e variáveis no tempo
-           (risco de inflação surpresa na LTN, risco fiscal na NTN-B).
-        2. No Brasil, com dívida crescente e dominância fiscal percebida, esses
-           prêmios são substanciais e não se cancelam na diferença.
-        3. O break-even sistematicamente sobrestima a inflação esperada em ~1-2pp.
-      O Focus reflete diretamente as expectativas dos economistas de mercado,
-      sem o ruído dos prêmios de risco dos títulos.
+      ipca_source:       "focus" | "bcb_sgs" | "fallback"
     """
     FALLBACK = {
-        "ipca_12m":         4.8,   # Calibrado com Focus mar/2026 (~4.8% para 2026)
-        "ipca_longo_prazo": 4.0,   # Meta do CMN / convergência longo prazo do Focus
+        "ipca_12m":         4.8,
+        "ipca_longo_prazo": 4.0,
         "ipca_fetched_at":  None,
         "ipca_source":      "fallback",
     }
+
+    # ── Fonte 1: BCB Olinda — Focus ───────────────────────────────────────────
+    # Bug anterior: urllib.parse.urlencode codificava aspas simples como %27,
+    # mas o Olinda exige aspas literais no $filter OData.
+    # Correção: construir a query string manualmente para o $filter.
     try:
-        today_str = datetime.date.today().isoformat()
-        # Expectativas anuais do Focus para IPCA — último registro disponível
-        # Filtramos pelos anos relevantes: ano corrente+1 (12m proxy) e ano+5 (longo prazo)
         import urllib.parse
-        base = "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
-        endpoint = "ExpectativasMercadoAnuais"
-        params = urllib.parse.urlencode({
-            "$filter": "Indicador eq 'IPCA'",
+        today_year = datetime.date.today().year
+        # Monta URL com $filter literal (aspas simples não codificadas)
+        filter_str = "Indicador eq 'IPCA' and baseCalculo eq '0'"
+        other_params = urllib.parse.urlencode({
             "$orderby": "Data desc",
-            "$top": "50",           # últimas 50 observações (várias datas × vários anos)
-            "$format": "json",
-            "$select": "Data,Ano,Mediana",
+            "$top":     "50",
+            "$format":  "json",
+            "$select":  "Data,Ano,Mediana",
         })
-        url = f"{base}{endpoint}?{params}"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        base = "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
+        url  = f"{base}ExpectativasMercadoAnuais?$filter={filter_str}&{other_params}"
+        req  = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept":     "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=20) as resp:
             raw = json.loads(resp.read())
 
         records = raw.get("value") or []
         if not records:
             raise ValueError("Focus API retornou vazio")
 
-        # Agrupar por (Data, Ano) — queremos a data mais recente disponível
         from collections import defaultdict
         by_date_ano: dict = defaultdict(dict)
         for r in records:
@@ -627,26 +658,53 @@ def fetch_ipca_focus() -> dict:
             raise ValueError("Nenhum registro válido")
 
         latest_date = max(by_date_ano.keys())
-        by_ano = by_date_ano[latest_date]
+        by_ano      = by_date_ano[latest_date]
 
-        today_year = datetime.date.today().year
-        # 12M proxy: projeção para o próximo ano calendário completo
         ipca_12m = by_ano.get(today_year + 1) or by_ano.get(today_year)
-        # Longo prazo: projeção para o ano 5 anos à frente (proxy de "neutro")
-        ipca_lp  = by_ano.get(today_year + 5) or by_ano.get(today_year + 4) or by_ano.get(today_year + 3)
+        ipca_lp  = (by_ano.get(today_year + 5) or by_ano.get(today_year + 4)
+                    or by_ano.get(today_year + 3))
+
+        if not ipca_12m:
+            raise ValueError("Sem dados para o ano corrente/próximo")
 
         result = {
-            "ipca_12m":         round(ipca_12m, 2) if ipca_12m else FALLBACK["ipca_12m"],
-            "ipca_longo_prazo": round(ipca_lp,  2) if ipca_lp  else FALLBACK["ipca_longo_prazo"],
+            "ipca_12m":         round(ipca_12m, 2),
+            "ipca_longo_prazo": round(ipca_lp,  2) if ipca_lp else FALLBACK["ipca_longo_prazo"],
             "ipca_fetched_at":  latest_date,
-            "ipca_source":      "live",
+            "ipca_source":      "focus",
         }
         print(f"  Focus IPCA 12M={result['ipca_12m']}% LP={result['ipca_longo_prazo']}% (ref. {latest_date})")
         return result
 
     except Exception as e:
-        print(f"  ✗ Focus IPCA falhou: {e} — usando fallback")
-        return FALLBACK
+        print(f"  ✗ Focus IPCA (Olinda) falhou: {e}")
+
+    # ── Fonte 2: BCB SGS série 13522 — expectativa IPCA 12M ──────────────────
+    # Série pública do BCB sem bloqueio. Usa como proxy de 12M;
+    # longo prazo = meta do CMN (3.0%) como âncora conservadora.
+    try:
+        today     = datetime.date.today()
+        end_str   = today.strftime("%d/%m/%Y")
+        start_str = (today - datetime.timedelta(days=30)).strftime("%d/%m/%Y")
+        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados"
+               f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        if data:
+            ipca_12m = float(data[-1]["valor"])
+            print(f"  Focus IPCA BCB SGS 13522: 12M={ipca_12m:.2f}% LP=3.0% (meta CMN)")
+            return {
+                "ipca_12m":         round(ipca_12m, 2),
+                "ipca_longo_prazo": 3.0,   # meta CMN como âncora de LP
+                "ipca_fetched_at":  data[-1]["data"],
+                "ipca_source":      "bcb_sgs",
+            }
+    except Exception as e:
+        print(f"  ✗ Focus IPCA BCB SGS falhou: {e}")
+
+    print("  ✗ Focus IPCA: todas as fontes falharam — usando fallback")
+    return FALLBACK
 
 
 # ── history.json — histórico crescente ────────────────────────────────────────
@@ -2330,6 +2388,7 @@ def compute_precomputed_optimizer(
     hist:         dict,
     cdi_annual:   float,
     ibov_annual:  float,
+    skip_k10:     bool = False,
 ) -> dict:
     """
     Pré-computa os resultados padrão do otimizador de portfólio.
@@ -2568,20 +2627,22 @@ def compute_precomputed_optimizer(
     # ── Loop principal ────────────────────────────────────────────────────────
     OBJECTIVES = ["sharpe", "vol", "return", "sortino", "calmar", "ir"]
     SIZES      = [3, 5, 10]
-    OPT_HORIZONTE_RF = 10.0   # mirrors JS OPT_HORIZONTE = 10
+    OPT_HORIZONTE_RF = 10.0
+
+    # Se skip_k10, omite k=10 — será calculado em paralelo pelos jobs de fatia
+    effective_sizes = [s for s in SIZES if not (skip_k10 and s == 10)]
 
     output: dict = {}
 
     for mode in ("normal", "betaadj"):
         mu_map = mu_map_normal if mode == "normal" else mu_map_betaadj
-        # CDI target: normal usa CDI ponderado; beta-adj usa 0 (alpha já é excesso)
         rf = cdi_annual if mode == "normal" else 0.0
 
         valid_cnpjs = [c for c, mu in mu_map.items()
                        if mu is not None and math.isfinite(mu)
                        and c in cov_full and c in funds_hist]
 
-        for k in SIZES:
+        for k in effective_sizes:
             if k > len(valid_cnpjs):
                 continue
             mus_all = [mu_map[c] for c in valid_cnpjs]
@@ -2889,7 +2950,7 @@ def compute_fund_betas(history_path: Path, index_rets: dict) -> dict:
 
     return results
 
-def main() -> None:
+def main(skip_k10: bool = False) -> None:
     today = datetime.date.today()
     print(f"Executando para {today.isoformat()}")
 
@@ -3084,10 +3145,6 @@ def main() -> None:
     print(f"\n── Jensen's alpha: {len(jensen_alpha)} fundos calculados")
 
     # ── Otimizador pré-computado ──────────────────────────────────────────────────
-    # Pré-computa os 36 resultados padrão (6 objetivos × 3 tamanhos × com/sem beta-adj)
-    # com o universo completo e sem restrições customizadas.
-    # O browser usa esses resultados diretamente quando não há sliders ativos,
-    # eliminando o cálculo de milhões de combinações no client-side.
     print(f"\n── Otimizador pré-computado")
     try:
         _hist_for_opt = json.loads(hist_path.read_text())
@@ -3098,9 +3155,11 @@ def main() -> None:
             hist           = _hist_for_opt,
             cdi_annual     = _cdi_ann,
             ibov_annual    = _ibov_ann,
+            skip_k10       = skip_k10,
         )
-        n_precomp = sum(len(v) for v in precomputed_optimizer.values())
-        print(f"  {n_precomp} portfólios pré-computados")
+        n_precomp = len(precomputed_optimizer)
+        print(f"  {n_precomp} portfólios pré-computados"
+              + (" (k=10 será calculado em paralelo)" if skip_k10 else ""))
     except Exception as _oe:
         import traceback
         print(f"  ⚠ otimizador pré-computado falhou: {_oe}")
@@ -3126,5 +3185,366 @@ def main() -> None:
     print(f"\n✓ data.json escrito ({len(results)} fundos)")
 
 
+def run_optimizer_slice(slice_idx: int, n_slices: int) -> None:
+    """
+    Calcula a fatia slice_idx/n_slices das combinações C(28,10) do otimizador
+    e salva o resultado em docs/opt_slice_{slice_idx}.json.
+
+    Lê docs/data.json e docs/history.json já gerados pelo job fetch.
+    Não toca em nenhum outro arquivo.
+    """
+    docs_dir  = Path(__file__).parent.parent / "docs"
+    data_path = docs_dir / "data.json"
+    hist_path = docs_dir / "history.json"
+
+    data = json.loads(data_path.read_text())
+    hist = json.loads(hist_path.read_text())
+
+    results      = data.get("funds", [])
+    fund_betas   = data.get("fund_betas", {})
+    jensen_alpha = data.get("jensenAlpha", {})
+    cdi_annual   = (data.get("cdi") or {}).get("cagr36") or 12.0
+    ibov_annual  = (data.get("ibov") or {}).get("cagr36") or 15.0
+
+    cov_full      = hist.get("covMatrix", {})
+    semi_cov_full = hist.get("semiCovMatrix", {})
+    common_dates  = hist.get("commonDates", [])
+    funds_hist    = hist.get("funds", {})
+
+    # Reutiliza helpers de compute_precomputed_optimizer
+    # (definidos no escopo do módulo via closure — recria aqui localmente)
+    result = _compute_optimizer_slice(
+        slice_idx     = slice_idx,
+        n_slices      = n_slices,
+        k             = 10,
+        results       = results,
+        fund_betas    = fund_betas,
+        jensen_alpha  = jensen_alpha,
+        hist          = hist,
+        cdi_annual    = cdi_annual,
+        ibov_annual   = ibov_annual,
+    )
+
+    out_path = docs_dir / f"opt_slice_{slice_idx}.json"
+    out_path.write_text(json.dumps(result, ensure_ascii=False))
+    print(f"✓ Fatia {slice_idx}/{n_slices}: {len(result)} chaves salvas em {out_path.name}")
+
+
+def _compute_optimizer_slice(
+    slice_idx: int, n_slices: int, k: int,
+    results: list, fund_betas: dict, jensen_alpha: dict,
+    hist: dict, cdi_annual: float, ibov_annual: float,
+) -> dict:
+    """
+    Executa o otimizador para k fundos, apenas para as combinações
+    na fatia slice_idx de n_slices do espaço total C(n,k).
+
+    Retorna dict com as mesmas chaves de compute_precomputed_optimizer
+    mas apenas para as combinações processadas nesta fatia.
+    """
+    # Reconstrói mu_maps e helpers — mesma lógica de compute_precomputed_optimizer
+    mu_map_normal: dict[str, float] = {}
+    for r in results:
+        if r.get("error"):
+            continue
+        cnpj = r.get("cnpjFmt")
+        if not cnpj:
+            continue
+        tr = r.get("targetReturn") or r.get("cagr36") or r.get("cagr12")
+        if tr is not None:
+            mu_map_normal[cnpj] = float(tr)
+
+    mu_map_betaadj: dict[str, float] = {
+        cnpj: float(ja) for cnpj, ja in jensen_alpha.items() if ja is not None
+    }
+
+    cov_full      = hist.get("covMatrix", {})
+    semi_cov_full = hist.get("semiCovMatrix", {})
+    common_dates  = hist.get("commonDates", [])
+    funds_hist    = hist.get("funds", {})
+
+    def get_cov(cnpjs: list, use_semi: bool = False) -> list:
+        src = semi_cov_full if use_semi else cov_full
+        m   = [[0.0] * len(cnpjs) for _ in range(len(cnpjs))]
+        for i, ci in enumerate(cnpjs):
+            for j, cj in enumerate(cnpjs):
+                v = (src.get(ci) or {}).get(cj)
+                m[i][j] = float(v) if v is not None else 0.0
+        return m
+
+    def get_returns(cnpj: str) -> list:
+        return funds_hist.get(cnpj, {}).get("returns", [])
+
+    def first_real_idx(cnpj: str) -> int:
+        for i, r in enumerate(get_returns(cnpj)):
+            if r is not None:
+                return i
+        return len(get_returns(cnpj))
+
+    def _mat_vec(M, v):
+        return [sum(M[i][j] * v[j] for j in range(len(v))) for i in range(len(v))]
+
+    def _invert(M):
+        n = len(M)
+        aug = [M[i][:] + [1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+        for col in range(n):
+            pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
+            aug[col], aug[pivot] = aug[pivot], aug[col]
+            if abs(aug[col][col]) < 1e-12:
+                return None
+            f = aug[col][col]
+            aug[col] = [x / f for x in aug[col]]
+            for row in range(n):
+                if row == col:
+                    continue
+                fac = aug[row][col]
+                aug[row] = [aug[row][j] - fac * aug[col][j] for j in range(2 * n)]
+        return [row[n:] for row in aug]
+
+    def min_vol_w(cov):
+        n = len(cov); active = list(range(n))
+        for _ in range(n):
+            k_ = len(active)
+            if k_ == 0: return None
+            sub = [[cov[active[i]][active[j]] for j in range(k_)] for i in range(k_)]
+            inv = _invert(sub)
+            if not inv: return None
+            ones = [1.0] * k_; iv = _mat_vec(inv, ones); denom = sum(iv)
+            if abs(denom) < 1e-12: return None
+            ws = [x / denom for x in iv]
+            if all(x >= -1e-10 for x in ws):
+                ws = [max(0.0, x) for x in ws]; tot = sum(ws)
+                if tot <= 0: return None
+                full = [0.0] * n
+                for idx, orig in enumerate(active): full[orig] = ws[idx] / tot
+                return full
+            active.pop(ws.index(min(ws)))
+        return None
+
+    def max_sharpe_w(mus, rf, cov):
+        n = len(mus); active = list(range(n))
+        for _ in range(n):
+            k_ = len(active)
+            if k_ == 0: return None
+            sub = [[cov[active[i]][active[j]] for j in range(k_)] for i in range(k_)]
+            excess = [mus[active[i]] - rf for i in range(k_)]
+            if all(e <= 0 for e in excess): return None
+            inv = _invert(sub)
+            if not inv: return None
+            raw = _mat_vec(inv, excess); tot = sum(raw)
+            if abs(tot) < 1e-12: return None
+            ws = [x / tot for x in raw]
+            if all(x >= -1e-10 for x in ws):
+                ws = [max(0.0, x) for x in ws]; tot2 = sum(ws)
+                if tot2 <= 0: return None
+                full = [0.0] * n
+                for idx, orig in enumerate(active): full[orig] = ws[idx] / tot2
+                return full
+            active.pop(ws.index(min(ws)))
+        return None
+
+    def max_return_w(mus):
+        n = len(mus); idx = mus.index(max(mus))
+        return [1.0 if i == idx else 0.0 for i in range(n)]
+
+    def max_sortino_w(cnpjs, mus, rf, cov):
+        sc = get_cov(cnpjs, use_semi=True)
+        if all(sc[i][i] == 0.0 for i in range(len(cnpjs))): return max_sharpe_w(mus, rf, cov)
+        return max_sharpe_w(mus, rf, sc)
+
+    def dot(a, b): return sum(x * y for x, y in zip(a, b))
+
+    def port_vol(w, cov):
+        v2 = sum(w[i] * w[j] * cov[i][j] for i in range(len(w)) for j in range(len(w)))
+        return math.sqrt(max(0.0, v2))
+
+    def eval_portfolio(cnpjs, w, mus, rf, ibov, cov):
+        ret = dot(w, mus); vol = port_vol(w, cov)
+        sharpe = (ret - rf) / vol if vol > 0 else -math.inf
+        n_ = len(get_returns(cnpjs[0]))
+        cdi_d = math.pow(1 + rf / 100, 1 / 252) - 1
+        fi_map = {c: first_real_idx(c) for c in cnpjs}
+        rets_by = {c: get_returns(c) for c in cnpjs}
+        semi_sq = cum = 0.0; peak = 1.0; max_dd = 0.0; cum = 1.0
+        for t in range(n_):
+            rp = sum(w[i] * (rets_by[c][t] if t >= fi_map[c] and rets_by[c][t] is not None else 0.0)
+                     for i, c in enumerate(cnpjs))
+            ex = rp - cdi_d
+            if ex < 0: semi_sq += ex * ex
+            cum *= (1 + rp)
+            if cum > peak: peak = cum
+            dd = (cum - peak) / peak
+            if dd < max_dd: max_dd = dd
+        semi_vol  = math.sqrt(semi_sq / n_) * math.sqrt(252) * 100 if n_ > 0 else 0.0
+        sortino   = (ret - rf) / semi_vol if semi_vol > 0 else -math.inf
+        cagr_hist = (math.pow(cum, 252 / n_) - 1) * 100 if n_ > 0 else 0.0
+        calmar    = cagr_hist / abs(max_dd * 100) if max_dd < 0 else cagr_hist / 0.001
+        ir        = (ret - ibov) / vol if vol > 0 else -math.inf
+        return {"ret": ret, "vol": vol, "sharpe": sharpe, "sortino": sortino,
+                "calmar": calmar, "ir": ir, "semiVol": semi_vol,
+                "maxDD": max_dd * 100, "cagrHist": cagr_hist}
+
+    OBJECTIVES = ["sharpe", "vol", "return", "sortino", "calmar", "ir"]
+    OPT_MIN_W  = 0.01
+
+    # Gera TODAS as combinações C(n,k) e seleciona apenas a fatia correta
+    # — garante exatidão total sem duplicação nem omissão.
+    all_results: dict[str, dict] = {}  # key -> best encontrado nesta fatia
+
+    for mode in ("normal", "betaadj"):
+        mu_map = mu_map_normal if mode == "normal" else mu_map_betaadj
+        rf     = cdi_annual if mode == "normal" else 0.0
+        valid  = [c for c, mu in mu_map.items()
+                  if mu is not None and math.isfinite(mu)
+                  and c in cov_full and c in funds_hist]
+
+        if k > len(valid):
+            continue
+
+        prefix = "betaadj_" if mode == "betaadj" else ""
+        bests  = {obj: (None, -math.inf) for obj in OBJECTIVES}
+
+        combo_idx = 0
+        for combo in combinations(valid, k):
+            # Determina se esta combinação pertence a esta fatia
+            if combo_idx % n_slices != slice_idx:
+                combo_idx += 1
+                continue
+            combo_idx += 1
+
+            mus = [mu_map[c] for c in combo]
+            cov = get_cov(combo)
+
+            for obj in OBJECTIVES:
+                if obj == "vol":
+                    w = min_vol_w(cov)
+                elif obj == "return":
+                    w = max_return_w(mus)
+                elif obj == "sortino":
+                    w = max_sortino_w(combo, mus, rf, cov) or max_sharpe_w(mus, rf, cov)
+                elif obj in ("calmar", "stress"):
+                    w = max_sharpe_w(mus, rf, cov)
+                elif obj == "ir":
+                    w = max_sharpe_w(mus, ibov_annual, cov)
+                else:
+                    w = max_sharpe_w(mus, rf, cov) or min_vol_w(cov)
+
+                if not w:
+                    w = [1.0 / k] * k
+                w = [max(OPT_MIN_W, x) for x in w]
+                tot = sum(w); w = [x / tot for x in w]
+
+                m = eval_portfolio(combo, w, mus, rf, ibov_annual, cov)
+                score = {
+                    "vol": -m["vol"], "sharpe": m["sharpe"], "return": m["ret"],
+                    "sortino": m["sortino"], "calmar": m["calmar"], "ir": m["ir"],
+                }.get(obj, m["sharpe"])
+
+                best_entry, best_score = bests[obj]
+                if score > best_score:
+                    bests[obj] = ({"cnpjs": list(combo), "weights": w, "metrics": m}, score)
+
+        for obj in OBJECTIVES:
+            best_entry, _ = bests[obj]
+            if best_entry:
+                key = f"{prefix}{obj}_{k}"
+                all_results[key] = {
+                    "cnpjs":   best_entry["cnpjs"],
+                    "weights": [round(x, 6) for x in best_entry["weights"]],
+                    "metrics": {
+                        k2: round(v, 4) if isinstance(v, float) and math.isfinite(v) else None
+                        for k2, v in best_entry["metrics"].items()
+                    },
+                    "_score": {obj: _ for obj in OBJECTIVES
+                               if (bests[obj][0] is not None and
+                                   bests[obj][0]["cnpjs"] == best_entry["cnpjs"])},
+                }
+
+    return all_results
+
+
+def aggregate_optimizer_slices(n_slices: int) -> None:
+    """
+    Lê docs/opt_slice_{i}.json para i in range(n_slices),
+    agrega o melhor resultado por chave, injeta em docs/data.json
+    e remove os arquivos temporários.
+    """
+    docs_dir  = Path(__file__).parent.parent / "docs"
+    data_path = docs_dir / "data.json"
+
+    print(f"\n── Agregando {n_slices} fatias do otimizador k=10")
+
+    # Score functions por objetivo
+    def score_of(key: str, entry: dict) -> float:
+        obj = key.split("_")[1] if key.startswith("betaadj_") else key.split("_")[0]
+        m   = entry.get("metrics", {})
+        return {
+            "vol":     -(m.get("vol")     or math.inf),
+            "sharpe":   (m.get("sharpe")  or -math.inf),
+            "return":   (m.get("ret")     or -math.inf),
+            "sortino":  (m.get("sortino") or -math.inf),
+            "calmar":   (m.get("calmar")  or -math.inf),
+            "ir":       (m.get("ir")      or -math.inf),
+        }.get(obj, -math.inf)
+
+    aggregated: dict[str, tuple] = {}  # key -> (entry, score)
+
+    for i in range(n_slices):
+        slice_path = docs_dir / f"opt_slice_{i}.json"
+        if not slice_path.exists():
+            print(f"  ⚠ fatia {i} ausente — pulando")
+            continue
+        try:
+            slc = json.loads(slice_path.read_text())
+            for key, entry in slc.items():
+                s = score_of(key, entry)
+                if key not in aggregated or s > aggregated[key][1]:
+                    aggregated[key] = (entry, s)
+            slice_path.unlink()  # remove arquivo temporário
+        except Exception as e:
+            print(f"  ⚠ fatia {i} erro: {e}")
+
+    if not aggregated:
+        print("  ⚠ nenhum resultado agregado")
+        return
+
+    # Injeta em data.json
+    data = json.loads(data_path.read_text())
+    existing = data.get("precomputedOptimizer", {})
+    for key, (entry, _) in aggregated.items():
+        existing[key] = {k: v for k, v in entry.items() if k != "_score"}
+        m = entry.get("metrics", {})
+        print(f"  {key:25s}: {entry['cnpjs'][0][-9:]}… "
+              f"ret={m.get('ret',0):.1f}% vol={m.get('vol',0):.1f}% "
+              f"sharpe={m.get('sharpe',0):.2f}")
+    data["precomputedOptimizer"] = existing
+    data_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    print(f"  ✓ {len(aggregated)} chaves k=10 integradas em data.json")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    args = sys.argv[1:]
+
+    if "--optimizer-slice" in args:
+        # Modo fatia: python fetch_data.py --optimizer-slice I N
+        idx = args.index("--optimizer-slice")
+        slice_i = int(args[idx + 1])
+        n_slices = int(args[idx + 2])
+        print(f"Modo fatia: {slice_i}/{n_slices} para k=10")
+        run_optimizer_slice(slice_i, n_slices)
+
+    elif "--aggregate" in args:
+        # Modo agregação: python fetch_data.py --aggregate N
+        idx = args.index("--aggregate")
+        n_slices = int(args[idx + 1])
+        print(f"Modo agregação: {n_slices} fatias")
+        aggregate_optimizer_slices(n_slices)
+
+    elif "--skip-k10" in args:
+        # Modo fetch normal mas sem k=10 no otimizador (k=10 vem das fatias)
+        main(skip_k10=True)
+
+    else:
+        # Modo padrão completo (local, sem paralelismo)
+        main(skip_k10=False)

@@ -1,4 +1,4 @@
-name: Update fund data & deploy
+name: Atualizar dados & deploy
 
 on:
   schedule:
@@ -12,20 +12,82 @@ permissions:
   id-token: write
 
 jobs:
-  update-and-deploy:
+  # ── Job 1: busca dados CVM, calcula history.json e data.json base ────────────
+  fetch:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Fetch CVM data and generate data.json + history.json
-        run: python scripts/fetch_data.py
+      - name: Fetch CVM data, history.json, data.json base (sem optimizer k=10)
+        run: python scripts/fetch_data.py --skip-k10
+
+      - name: Upload artefatos para jobs paralelos
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-base
+          path: docs/
+          retention-days: 1
+
+  # ── Job 2: otimizador k=10 em paralelo (20 fatias) ───────────────────────────
+  optimize-k10:
+    needs: fetch
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        slice: [0,1,2,3,4]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download artefatos base
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-base
+          path: docs/
+
+      - name: Calcular fatia ${{ matrix.slice }}/5 do otimizador k=10
+        run: python scripts/fetch_data.py --optimizer-slice ${{ matrix.slice }} 5
+
+      - name: Upload resultado parcial
+        uses: actions/upload-artifact@v4
+        with:
+          name: opt-slice-${{ matrix.slice }}
+          path: docs/opt_slice_${{ matrix.slice }}.json
+          retention-days: 1
+
+  # ── Job 3: agrega resultados, commit, deploy ──────────────────────────────────
+  aggregate:
+    needs: optimize-k10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download artefatos base
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-base
+          path: docs/
+
+      - name: Download todas as fatias do otimizador
+        uses: actions/download-artifact@v4
+        with:
+          pattern: opt-slice-*
+          path: docs/
+          merge-multiple: true
+
+      - name: Agregar resultados e finalizar data.json
+        run: python scripts/fetch_data.py --aggregate 5
 
       - name: Commit updated data files
         run: |
