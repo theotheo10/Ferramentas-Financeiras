@@ -569,49 +569,35 @@ def fetch_ntnb() -> dict:
                 raw = resp.read().decode("latin-1", errors="replace")
 
             lines = raw.splitlines()
-            # Log primeiras linhas para debug de formato
-            print(f"  ANBIMA {candidate}: {len(lines)} linhas, primeiras 3:")
-            for l in lines[:3]:
-                print(f"    {repr(l[:120])}")
+            # Formato real confirmado:
+            # Titulo@Data Referencia@Codigo SELIC@Data Base/Emissao@Data Vencimento@
+            # Tx. Compra@Tx. Venda@Tx. Indicativas@PU@Desvio pad@...
+            # col 0: Titulo (ex: "NTN-B")
+            # col 4: Data Vencimento (DD/MM/AAAA)
+            # col 7: Tx. Indicativas (taxa em %)
 
             titles = []
             for line in lines:
-                upper = line.upper()
-                if "NTN-B" not in upper: continue
-                # Tenta separadores @ e ;
-                for sep in ["@", ";"]:
-                    parts = [p.strip().strip('"') for p in line.split(sep)]
-                    if len(parts) < 4: continue
-                    try:
-                        tipo = parts[0]
-                        if "NTN-B" not in tipo.upper() or "PRINCIPAL" in tipo.upper(): continue
-                        # Busca vencimento no formato DD/MM/AAAA
-                        venc_iso = None
-                        for col in range(1, min(6, len(parts))):
-                            cv = parts[col]
-                            if "/" in cv and len(cv) >= 8:
-                                try:
-                                    dv, mv, yv = cv.split("/")
-                                    venc_iso = f"{yv.zfill(4)}-{mv.zfill(2)}-{dv.zfill(2)}"
-                                    datetime.date.fromisoformat(venc_iso)  # valida
-                                    break
-                                except Exception:
-                                    venc_iso = None
-                        if not venc_iso: continue
-                        # Busca taxa em coluna com valor entre 2% e 20%
-                        taxa = None
-                        for col in range(2, min(9, len(parts))):
-                            try:
-                                v = float(parts[col].replace(",", "."))
-                                if 2.0 < v < 20.0:
-                                    taxa = v; break
-                            except ValueError:
-                                continue
-                        if taxa:
-                            titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
-                            break  # achou com este separador
-                    except Exception:
-                        continue
+                if not line.strip() or "@" not in line:
+                    continue
+                parts = [p.strip() for p in line.split("@")]
+                if len(parts) < 8:
+                    continue
+                tipo = parts[0]
+                if "NTN-B" not in tipo.upper():
+                    continue
+                if "PRINCIPAL" in tipo.upper():
+                    continue
+                try:
+                    venc_raw = parts[4]  # Data Vencimento
+                    dv, mv, yv = venc_raw.split("/")
+                    venc_iso = f"{yv.zfill(4)}-{mv.zfill(2)}-{dv.zfill(2)}"
+                    datetime.date.fromisoformat(venc_iso)  # valida
+                    taxa = float(parts[7].replace(",", "."))  # Tx. Indicativas
+                    if 2.0 < taxa < 20.0:
+                        titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
+                except Exception:
+                    continue
 
             result = _process_titles(titles)
             if result:
@@ -620,7 +606,7 @@ def fetch_ntnb() -> dict:
                 print(f"  NTN-B ANBIMA {candidate} ({len(titles)} títulos, {len(longs)} longas)")
                 print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
                 return result
-            print(f"  ✗ NTN-B ANBIMA {candidate}: {len(titles)} títulos encontrados mas nenhum longo")
+            print(f"  ✗ NTN-B ANBIMA {candidate}: {len(titles)} títulos NTN-B encontrados")
         except Exception as e:
             print(f"  ✗ NTN-B ANBIMA {candidate}: {e}")
 
