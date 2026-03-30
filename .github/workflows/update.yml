@@ -12,116 +12,20 @@ permissions:
   id-token: write
 
 jobs:
-  # ── Job 1: busca CVM, IBOV, CDI, calcula history.json e data.json ────────────
-  # Sem otimizador — idêntico ao workflow original em tempo de execução.
-  fetch:
+  update-and-deploy:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Fetch CVM data, history.json, data.json (sem otimizador)
-        run: python scripts/fetch_data.py --skip-all-optimizer
-
-      - name: Upload docs para jobs paralelos
-        uses: actions/upload-artifact@v4
-        with:
-          name: docs-base
-          path: docs/
-          retention-days: 1
-
-  # ── Job 2a: otimizador k=3 e k=5 (completo, ~6s de cálculo) ─────────────────
-  optimize-k35:
-    needs: fetch
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Download docs base
-        uses: actions/download-artifact@v4
-        with:
-          name: docs-base
-          path: docs/
-
-      - name: Calcular otimizador k=3 e k=5 (força bruta exata)
-        run: python scripts/fetch_data.py --optimizer-k35
-
-      - name: Upload resultado k=3 e k=5
-        uses: actions/upload-artifact@v4
-        with:
-          name: opt-k35
-          path: docs/opt_k35.json
-          retention-days: 1
-
-  # ── Job 2b: otimizador k=10 em 10 fatias paralelas (~6 min cada) ─────────────
-  optimize-k10:
-    needs: fetch
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        slice: [0,1,2,3,4,5,6,7,8,9]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Download docs base
-        uses: actions/download-artifact@v4
-        with:
-          name: docs-base
-          path: docs/
-
-      - name: Calcular fatia ${{ matrix.slice }}/10 do otimizador k=10
-        run: python scripts/fetch_data.py --optimizer-slice ${{ matrix.slice }} 10
-
-      - name: Upload resultado parcial k=10
-        uses: actions/upload-artifact@v4
-        with:
-          name: opt-k10-slice-${{ matrix.slice }}
-          path: docs/opt_slice_${{ matrix.slice }}.json
-          retention-days: 1
-
-  # ── Job 3: agrega tudo, commit e deploy ──────────────────────────────────────
-  aggregate:
-    needs: [optimize-k35, optimize-k10]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Download docs base
-        uses: actions/download-artifact@v4
-        with:
-          name: docs-base
-          path: docs/
-
-      - name: Download resultado k=3 e k=5
-        uses: actions/download-artifact@v4
-        with:
-          name: opt-k35
-          path: docs/
-
-      - name: Download todas as fatias k=10
-        uses: actions/download-artifact@v4
-        with:
-          pattern: opt-k10-slice-*
-          path: docs/
-          merge-multiple: true
-
-      - name: Agregar todos os resultados em data.json
-        run: python scripts/fetch_data.py --aggregate 10
+      - name: Fetch CVM data and generate data.json + history.json
+        run: python scripts/fetch_data.py
 
       - name: Commit updated data files
         run: |

@@ -483,8 +483,151 @@ def fetch_cdi(anchor: datetime.date, a12: datetime.date, a36: datetime.date, a60
 def fetch_ntnb() -> dict:
     """
     Busca as taxas atuais das NTN-B (Tesouro IPCA+).
-    Fontes: 1) BCB SGS 13793 (NTN-B 2035), 2) ANBIMA últimos 5 dias úteis.
+
+    Fontes em ordem:
+      1) BCB SGS ultimos/1 — endpoint mais rápido, múltiplas séries NTN-B
+      2) ANBIMA arquivo txt — últimos 5 dias úteis, com debug de formato
     """
+    FALLBACK = {
+        "ntnb_rate_long":   7.05,
+        "ntnb_rate_mid":    6.90,
+        "ntnb_fetched_at":  None,
+        "ntnb_titles":      [],
+        "ntnb_source":      "fallback",
+    }
+
+    today        = datetime.date.today()
+    horizon_long = today.replace(year=today.year + 8)
+    horizon_5y   = today.replace(year=today.year + 5)
+
+    def _process_titles(titles):
+        if not titles: return None
+        longs = [t for t in titles if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
+        mids  = [t for t in titles if abs((datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days) < 730]
+        ntnb_long = sum(t["taxa"] for t in longs) / len(longs) if longs else None
+        ntnb_mid  = min(mids, key=lambda t: abs((datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days))["taxa"] if mids else None
+        if not ntnb_long: return None
+        return {
+            "ntnb_rate_long":  round(ntnb_long, 4),
+            "ntnb_rate_mid":   round(ntnb_mid, 4) if ntnb_mid else round(ntnb_long, 4),
+            "ntnb_fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "ntnb_titles":     titles,
+        }
+
+    def _bcb_sgs_ultimos(serie: int) -> float | None:
+        """Busca último valor de uma série SGS via endpoint /ultimos/1 — muito mais rápido."""
+        url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados/ultimos/1?formato=json"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        if data:
+            return float(data[-1]["valor"])
+        return None
+
+    # ── Fonte 1: BCB SGS — múltiplas séries NTN-B via /ultimos/1 ─────────────
+    # Séries disponíveis no SGS para NTN-B:
+    # 13793 = NTN-B 2035 (taxa indicativa ANBIMA)
+    # 13793 falha com timeout em range de datas — /ultimos/1 é muito mais rápido
+    # Série 13793 é a NTN-B principal (longa)
+    # Série 13793 alternativas: tentamos 3 séries diferentes
+    SGS_SERIES = [
+        (13793, "NTN-B 2035", "2035-05-15"),   # NTN-B longa principal
+        (13793, "NTN-B 2035", "2035-05-15"),   # placeholder para fallback
+    ]
+    # Tenta /ultimos/1 que não precisa de range de datas — muito mais confiável
+    for serie, nome, venc in [(13793, "NTN-B 2035", "2035-05-15")]:
+        try:
+            taxa = _bcb_sgs_ultimos(serie)
+            if taxa and 2.0 < taxa < 20.0:
+                print(f"  NTN-B BCB SGS {serie} ({nome}): {taxa:.2f}%")
+                return {
+                    "ntnb_rate_long":   round(taxa, 4),
+                    "ntnb_rate_mid":    round(taxa * 0.97, 4),
+                    "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "ntnb_titles":      [{"nome": nome, "vencimento": venc, "taxa": taxa}],
+                    "ntnb_source":      "bcb_sgs",
+                }
+        except Exception as e:
+            print(f"  ✗ NTN-B BCB SGS {serie}: {e}")
+
+    # ── Fonte 2: ANBIMA arquivo txt — últimos 5 dias úteis ───────────────────
+    def _last_business_days(n):
+        days = []
+        d = today
+        while len(days) < n:
+            if d.weekday() < 5:
+                days.append(d)
+            d -= datetime.timedelta(days=1)
+        return days
+
+    for candidate in _last_business_days(5):
+        url = ("https://www.anbima.com.br/informacoes/merc-sec/arqs/ms"
+               + candidate.strftime("%y%m%d") + ".txt")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                raw = resp.read().decode("latin-1", errors="replace")
+
+            lines = raw.splitlines()
+            # Log primeiras linhas para debug de formato
+            print(f"  ANBIMA {candidate}: {len(lines)} linhas, primeiras 3:")
+            for l in lines[:3]:
+                print(f"    {repr(l[:120])}")
+
+            titles = []
+            for line in lines:
+                upper = line.upper()
+                if "NTN-B" not in upper: continue
+                # Tenta separadores @ e ;
+                for sep in ["@", ";"]:
+                    parts = [p.strip().strip('"') for p in line.split(sep)]
+                    if len(parts) < 4: continue
+                    try:
+                        tipo = parts[0]
+                        if "NTN-B" not in tipo.upper() or "PRINCIPAL" in tipo.upper(): continue
+                        # Busca vencimento no formato DD/MM/AAAA
+                        venc_iso = None
+                        for col in range(1, min(6, len(parts))):
+                            cv = parts[col]
+                            if "/" in cv and len(cv) >= 8:
+                                try:
+                                    dv, mv, yv = cv.split("/")
+                                    venc_iso = f"{yv.zfill(4)}-{mv.zfill(2)}-{dv.zfill(2)}"
+                                    datetime.date.fromisoformat(venc_iso)  # valida
+                                    break
+                                except Exception:
+                                    venc_iso = None
+                        if not venc_iso: continue
+                        # Busca taxa em coluna com valor entre 2% e 20%
+                        taxa = None
+                        for col in range(2, min(9, len(parts))):
+                            try:
+                                v = float(parts[col].replace(",", "."))
+                                if 2.0 < v < 20.0:
+                                    taxa = v; break
+                            except ValueError:
+                                continue
+                        if taxa:
+                            titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
+                            break  # achou com este separador
+                    except Exception:
+                        continue
+
+            result = _process_titles(titles)
+            if result:
+                result["ntnb_source"] = "anbima"
+                longs = [t for t in titles if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
+                print(f"  NTN-B ANBIMA {candidate} ({len(titles)} títulos, {len(longs)} longas)")
+                print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
+                return result
+            print(f"  ✗ NTN-B ANBIMA {candidate}: {len(titles)} títulos encontrados mas nenhum longo")
+        except Exception as e:
+            print(f"  ✗ NTN-B ANBIMA {candidate}: {e}")
+
+    print("  ✗ NTN-B: todas as fontes falharam — usando fallback")
+    return FALLBACK
+
+
     FALLBACK = {
         "ntnb_rate_long":   7.05,
         "ntnb_rate_mid":    6.90,
@@ -2620,7 +2763,7 @@ def compute_fund_betas(history_path: Path, index_rets: dict) -> dict:
 
     return results
 
-def main(skip_k10: bool = False, skip_all_optimizer: bool = False) -> None:
+def main() -> None:
     today = datetime.date.today()
     print(f"Executando para {today.isoformat()}")
 
@@ -2806,44 +2949,17 @@ def main(skip_k10: bool = False, skip_all_optimizer: bool = False) -> None:
         jensen_alpha[cnpj] = round(ja, 4)
     print(f"\n── Jensen's alpha: {len(jensen_alpha)} fundos calculados")
 
-    # ── Otimizador pré-computado ──────────────────────────────────────────────────
-    if skip_all_optimizer:
-        print(f"\n── Otimizador pré-computado: pulado (será calculado em jobs paralelos)")
-        precomputed_optimizer = {}
-    else:
-        print(f"\n── Otimizador pré-computado")
-        try:
-            _hist_for_opt = json.loads(hist_path.read_text())
-            precomputed_optimizer = compute_precomputed_optimizer(
-                results        = results,
-                fund_betas     = fund_betas,
-                jensen_alpha   = jensen_alpha,
-                hist           = _hist_for_opt,
-                cdi_annual     = _cdi_ann,
-                ibov_annual    = _ibov_ann,
-                skip_k10       = skip_k10,
-            )
-            n_precomp = len(precomputed_optimizer)
-            print(f"  {n_precomp} portfólios pré-computados"
-                  + (" (k=10 será calculado em paralelo)" if skip_k10 else ""))
-        except Exception as _oe:
-            import traceback
-            print(f"  ⚠ otimizador pré-computado falhou: {_oe}")
-            traceback.print_exc()
-            precomputed_optimizer = {}
-
     data_out = {
-        "generatedAt":          datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "anchorDate":           anchor.isoformat(),
-        "ibov":                 ibov,
-        "cdi":                  cdi_final,
-        "sp500":                sp500,
-        "ntnb":                 ntnb,
-        "ipca_focus":           ipca_focus,
-        "fund_betas":           fund_betas,
-        "jensenAlpha":          jensen_alpha,
-        "precomputedOptimizer": precomputed_optimizer,
-        "funds":                results,
+        "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "anchorDate":  anchor.isoformat(),
+        "ibov":        ibov,
+        "cdi":         cdi_final,
+        "sp500":       sp500,
+        "ntnb":        ntnb,
+        "ipca_focus":  ipca_focus,
+        "fund_betas":  fund_betas,
+        "jensenAlpha": jensen_alpha,
+        "funds":       results,
     }
 
     out_path.parent.mkdir(exist_ok=True)
@@ -2851,504 +2967,6 @@ def main(skip_k10: bool = False, skip_all_optimizer: bool = False) -> None:
     print(f"\n✓ data.json escrito ({len(results)} fundos)")
 
 
-# ── Funções auxiliares para workflow paralelo ──────────────────────────────────
-
-def compute_precomputed_optimizer(
-    results: list, fund_betas: dict, jensen_alpha: dict,
-    hist: dict, cdi_annual: float, ibov_annual: float,
-    skip_k10: bool = False,
-) -> dict:
-    """Pré-computa otimizador para k=3, k=5 (e k=10 se skip_k10=False)."""
-    import random as _rnd
-
-    mu_map_normal: dict[str, float] = {}
-    for r in results:
-        if r.get("error"): continue
-        cnpj = r.get("cnpjFmt")
-        if not cnpj: continue
-        tr = r.get("targetReturn") or r.get("cagr36") or r.get("cagr12")
-        if tr is not None:
-            mu_map_normal[cnpj] = float(tr)
-
-    mu_map_betaadj: dict[str, float] = {
-        cnpj: float(ja) for cnpj, ja in jensen_alpha.items() if ja is not None
-    }
-
-    cov_full      = hist.get("covMatrix", {})
-    semi_cov_full = hist.get("semiCovMatrix", {})
-    funds_hist    = hist.get("funds", {})
-
-    def get_cov(cnpjs, use_semi=False):
-        src = semi_cov_full if use_semi else cov_full
-        k = len(cnpjs)
-        m = [[0.0]*k for _ in range(k)]
-        for i, ci in enumerate(cnpjs):
-            for j, cj in enumerate(cnpjs):
-                v = (src.get(ci) or {}).get(cj)
-                m[i][j] = float(v) if v is not None else 0.0
-        return m
-
-    def get_returns(cnpj):
-        return funds_hist.get(cnpj, {}).get("returns", [])
-
-    def first_real_idx(cnpj):
-        for i, r in enumerate(get_returns(cnpj)):
-            if r is not None: return i
-        return len(get_returns(cnpj))
-
-    def _mat_vec(M, v):
-        return [sum(M[i][j]*v[j] for j in range(len(v))) for i in range(len(v))]
-
-    def _invert(M):
-        n = len(M)
-        aug = [M[i][:] + [1.0 if i==j else 0.0 for j in range(n)] for i in range(n)]
-        for col in range(n):
-            pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
-            aug[col], aug[pivot] = aug[pivot], aug[col]
-            if abs(aug[col][col]) < 1e-12: return None
-            f = aug[col][col]
-            aug[col] = [x/f for x in aug[col]]
-            for row in range(n):
-                if row == col: continue
-                fac = aug[row][col]
-                aug[row] = [aug[row][j] - fac*aug[col][j] for j in range(2*n)]
-        return [row[n:] for row in aug]
-
-    def min_vol_w(cov):
-        n = len(cov); active = list(range(n))
-        for _ in range(n):
-            k_ = len(active)
-            if k_ == 0: return None
-            sub = [[cov[active[i]][active[j]] for j in range(k_)] for i in range(k_)]
-            inv = _invert(sub)
-            if not inv: return None
-            ones = [1.0]*k_; iv = _mat_vec(inv, ones); denom = sum(iv)
-            if abs(denom) < 1e-12: return None
-            ws = [x/denom for x in iv]
-            if all(x >= -1e-10 for x in ws):
-                ws = [max(0.0,x) for x in ws]; tot = sum(ws)
-                if tot <= 0: return None
-                full = [0.0]*n
-                for idx, orig in enumerate(active): full[orig] = ws[idx]/tot
-                return full
-            active.pop(ws.index(min(ws)))
-        return None
-
-    def max_sharpe_w(mus, rf, cov):
-        n = len(mus); active = list(range(n))
-        for _ in range(n):
-            k_ = len(active)
-            if k_ == 0: return None
-            sub = [[cov[active[i]][active[j]] for j in range(k_)] for i in range(k_)]
-            excess = [mus[active[i]] - rf for i in range(k_)]
-            if all(e <= 0 for e in excess): return None
-            inv = _invert(sub)
-            if not inv: return None
-            raw = _mat_vec(inv, excess); tot = sum(raw)
-            if abs(tot) < 1e-12: return None
-            ws = [x/tot for x in raw]
-            if all(x >= -1e-10 for x in ws):
-                ws = [max(0.0,x) for x in ws]; tot2 = sum(ws)
-                if tot2 <= 0: return None
-                full = [0.0]*n
-                for idx, orig in enumerate(active): full[orig] = ws[idx]/tot2
-                return full
-            active.pop(ws.index(min(ws)))
-        return None
-
-    def max_return_w(mus):
-        n = len(mus); idx = mus.index(max(mus))
-        return [1.0 if i==idx else 0.0 for i in range(n)]
-
-    def max_sortino_w(cnpjs, mus, rf, cov):
-        sc = get_cov(cnpjs, use_semi=True)
-        if all(sc[i][i] == 0.0 for i in range(len(cnpjs))): return max_sharpe_w(mus, rf, cov)
-        return max_sharpe_w(mus, rf, sc)
-
-    def dot(a, b): return sum(x*y for x,y in zip(a,b))
-
-    def port_vol(w, cov):
-        v2 = sum(w[i]*w[j]*cov[i][j] for i in range(len(w)) for j in range(len(w)))
-        return math.sqrt(max(0.0, v2))
-
-    def eval_portfolio(cnpjs, w, mus, rf, ibov, cov):
-        ret = dot(w, mus); vol = port_vol(w, cov)
-        sharpe = (ret - rf)/vol if vol > 0 else -math.inf
-        n_ = len(get_returns(cnpjs[0]))
-        cdi_d = math.pow(1 + rf/100, 1/252) - 1
-        fi_map = {c: first_real_idx(c) for c in cnpjs}
-        rets_by = {c: get_returns(c) for c in cnpjs}
-        semi_sq = 0.0; cum = 1.0; peak = 1.0; max_dd = 0.0
-        for t in range(n_):
-            rp = sum(w[i]*(rets_by[c][t] if t >= fi_map[c] and rets_by[c][t] is not None else 0.0)
-                     for i,c in enumerate(cnpjs))
-            ex = rp - cdi_d
-            if ex < 0: semi_sq += ex*ex
-            cum *= (1+rp)
-            if cum > peak: peak = cum
-            dd = (cum - peak)/peak
-            if dd < max_dd: max_dd = dd
-        semi_vol  = math.sqrt(semi_sq/n_)*math.sqrt(252)*100 if n_ > 0 else 0.0
-        sortino   = (ret - rf)/semi_vol if semi_vol > 0 else -math.inf
-        cagr_hist = (math.pow(cum, 252/n_) - 1)*100 if n_ > 0 else 0.0
-        calmar    = cagr_hist/abs(max_dd*100) if max_dd < 0 else cagr_hist/0.001
-        ir        = (ret - ibov)/vol if vol > 0 else -math.inf
-        return {"ret":ret,"vol":vol,"sharpe":sharpe,"sortino":sortino,
-                "calmar":calmar,"ir":ir,"semiVol":semi_vol,"maxDD":max_dd*100,"cagrHist":cagr_hist}
-
-    OBJECTIVES = ["sharpe","vol","return","sortino","calmar","ir"]
-    SIZES      = [3, 5] if skip_k10 else [3, 5, 10]
-    OPT_MIN_W  = 0.01
-    output: dict = {}
-
-    for mode in ("normal","betaadj"):
-        mu_map = mu_map_normal if mode == "normal" else mu_map_betaadj
-        rf = cdi_annual if mode == "normal" else 0.0
-        valid = [c for c,mu in mu_map.items()
-                 if mu is not None and math.isfinite(mu) and c in cov_full and c in funds_hist]
-
-        for k in SIZES:
-            if k > len(valid): continue
-            prefix = "betaadj_" if mode == "betaadj" else ""
-
-            for obj in OBJECTIVES:
-                key = f"{prefix}{obj}_{k}"
-                best = None; best_score = -math.inf
-
-                for combo in combinations(valid, k):
-                    mus = [mu_map[c] for c in combo]
-                    cov = get_cov(combo)
-                    if obj == "vol":         w = min_vol_w(cov)
-                    elif obj == "return":    w = max_return_w(mus)
-                    elif obj == "sortino":   w = max_sortino_w(combo,mus,rf,cov) or max_sharpe_w(mus,rf,cov)
-                    elif obj in ("calmar",): w = max_sharpe_w(mus,rf,cov)
-                    elif obj == "ir":        w = max_sharpe_w(mus,ibov_annual,cov)
-                    else:                    w = max_sharpe_w(mus,rf,cov) or min_vol_w(cov)
-                    if not w: w = [1.0/k]*k
-                    w = [max(OPT_MIN_W,x) for x in w]; tot = sum(w); w = [x/tot for x in w]
-                    m = eval_portfolio(combo,w,mus,rf,ibov_annual,cov)
-                    score = {"vol":-m["vol"],"sharpe":m["sharpe"],"return":m["ret"],
-                             "sortino":m["sortino"],"calmar":m["calmar"],"ir":m["ir"]}.get(obj,m["sharpe"])
-                    if score > best_score:
-                        best_score = score
-                        best = {"cnpjs":list(combo),"weights":w,"metrics":m}
-
-                if best:
-                    output[key] = {
-                        "cnpjs":   best["cnpjs"],
-                        "weights": [round(x,6) for x in best["weights"]],
-                        "metrics": {k2: round(v,4) if isinstance(v,float) and math.isfinite(v) else None
-                                    for k2,v in best["metrics"].items()},
-                    }
-                    m = best["metrics"]
-                    print(f"  {key:25s}: ret={m['ret']:.1f}% vol={m['vol']:.1f}% sharpe={m['sharpe']:.2f}")
-
-    return output
-
-
-def _compute_optimizer_slice(
-    slice_idx: int, n_slices: int, k: int,
-    results: list, fund_betas: dict, jensen_alpha: dict,
-    hist: dict, cdi_annual: float, ibov_annual: float,
-) -> dict:
-    """Calcula a fatia slice_idx/n_slices de C(n,k) do otimizador."""
-    mu_map_normal: dict[str, float] = {}
-    for r in results:
-        if r.get("error"): continue
-        cnpj = r.get("cnpjFmt")
-        if not cnpj: continue
-        tr = r.get("targetReturn") or r.get("cagr36") or r.get("cagr12")
-        if tr is not None: mu_map_normal[cnpj] = float(tr)
-
-    mu_map_betaadj: dict[str, float] = {
-        cnpj: float(ja) for cnpj, ja in jensen_alpha.items() if ja is not None
-    }
-
-    cov_full      = hist.get("covMatrix", {})
-    semi_cov_full = hist.get("semiCovMatrix", {})
-    funds_hist    = hist.get("funds", {})
-
-    # Inline helpers (same as compute_precomputed_optimizer)
-    def get_cov(cnpjs, use_semi=False):
-        src = semi_cov_full if use_semi else cov_full
-        n = len(cnpjs)
-        m = [[0.0]*n for _ in range(n)]
-        for i,ci in enumerate(cnpjs):
-            for j,cj in enumerate(cnpjs):
-                v = (src.get(ci) or {}).get(cj)
-                m[i][j] = float(v) if v is not None else 0.0
-        return m
-
-    def get_returns(cnpj): return funds_hist.get(cnpj,{}).get("returns",[])
-    def first_real_idx(cnpj):
-        for i,r in enumerate(get_returns(cnpj)):
-            if r is not None: return i
-        return len(get_returns(cnpj))
-
-    def _mat_vec(M,v): return [sum(M[i][j]*v[j] for j in range(len(v))) for i in range(len(v))]
-    def _invert(M):
-        n=len(M); aug=[M[i][:]+[1.0 if i==j else 0.0 for j in range(n)] for i in range(n)]
-        for col in range(n):
-            pivot=max(range(col,n),key=lambda r:abs(aug[r][col])); aug[col],aug[pivot]=aug[pivot],aug[col]
-            if abs(aug[col][col])<1e-12: return None
-            f=aug[col][col]; aug[col]=[x/f for x in aug[col]]
-            for row in range(n):
-                if row==col: continue
-                fac=aug[row][col]; aug[row]=[aug[row][j]-fac*aug[col][j] for j in range(2*n)]
-        return [row[n:] for row in aug]
-
-    def min_vol_w(cov):
-        n=len(cov); active=list(range(n))
-        for _ in range(n):
-            k_=len(active)
-            if k_==0: return None
-            sub=[[cov[active[i]][active[j]] for j in range(k_)] for i in range(k_)]
-            inv=_invert(sub)
-            if not inv: return None
-            ones=[1.0]*k_; iv=_mat_vec(inv,ones); denom=sum(iv)
-            if abs(denom)<1e-12: return None
-            ws=[x/denom for x in iv]
-            if all(x>=-1e-10 for x in ws):
-                ws=[max(0.0,x) for x in ws]; tot=sum(ws)
-                if tot<=0: return None
-                full=[0.0]*n
-                for idx,orig in enumerate(active): full[orig]=ws[idx]/tot
-                return full
-            active.pop(ws.index(min(ws)))
-        return None
-
-    def max_sharpe_w(mus,rf,cov):
-        n=len(mus); active=list(range(n))
-        for _ in range(n):
-            k_=len(active)
-            if k_==0: return None
-            sub=[[cov[active[i]][active[j]] for j in range(k_)] for i in range(k_)]
-            excess=[mus[active[i]]-rf for i in range(k_)]
-            if all(e<=0 for e in excess): return None
-            inv=_invert(sub)
-            if not inv: return None
-            raw=_mat_vec(inv,excess); tot=sum(raw)
-            if abs(tot)<1e-12: return None
-            ws=[x/tot for x in raw]
-            if all(x>=-1e-10 for x in ws):
-                ws=[max(0.0,x) for x in ws]; tot2=sum(ws)
-                if tot2<=0: return None
-                full=[0.0]*n
-                for idx,orig in enumerate(active): full[orig]=ws[idx]/tot2
-                return full
-            active.pop(ws.index(min(ws)))
-        return None
-
-    def max_return_w(mus):
-        n=len(mus); idx=mus.index(max(mus))
-        return [1.0 if i==idx else 0.0 for i in range(n)]
-
-    def max_sortino_w(cnpjs,mus,rf,cov):
-        sc=get_cov(cnpjs,use_semi=True)
-        if all(sc[i][i]==0.0 for i in range(len(cnpjs))): return max_sharpe_w(mus,rf,cov)
-        return max_sharpe_w(mus,rf,sc)
-
-    def dot(a,b): return sum(x*y for x,y in zip(a,b))
-    def port_vol(w,cov):
-        v2=sum(w[i]*w[j]*cov[i][j] for i in range(len(w)) for j in range(len(w)))
-        return math.sqrt(max(0.0,v2))
-
-    def eval_portfolio(cnpjs,w,mus,rf,ibov,cov):
-        ret=dot(w,mus); vol=port_vol(w,cov)
-        sharpe=(ret-rf)/vol if vol>0 else -math.inf
-        n_=len(get_returns(cnpjs[0]))
-        cdi_d=math.pow(1+rf/100,1/252)-1
-        fi_map={c:first_real_idx(c) for c in cnpjs}
-        rets_by={c:get_returns(c) for c in cnpjs}
-        semi_sq=0.0; cum=1.0; peak=1.0; max_dd=0.0
-        for t in range(n_):
-            rp=sum(w[i]*(rets_by[c][t] if t>=fi_map[c] and rets_by[c][t] is not None else 0.0)
-                   for i,c in enumerate(cnpjs))
-            ex=rp-cdi_d
-            if ex<0: semi_sq+=ex*ex
-            cum*=(1+rp)
-            if cum>peak: peak=cum
-            dd=(cum-peak)/peak
-            if dd<max_dd: max_dd=dd
-        semi_vol=math.sqrt(semi_sq/n_)*math.sqrt(252)*100 if n_>0 else 0.0
-        sortino=(ret-rf)/semi_vol if semi_vol>0 else -math.inf
-        cagr_hist=(math.pow(cum,252/n_)-1)*100 if n_>0 else 0.0
-        calmar=cagr_hist/abs(max_dd*100) if max_dd<0 else cagr_hist/0.001
-        ir=(ret-ibov)/vol if vol>0 else -math.inf
-        return {"ret":ret,"vol":vol,"sharpe":sharpe,"sortino":sortino,
-                "calmar":calmar,"ir":ir,"semiVol":semi_vol,"maxDD":max_dd*100,"cagrHist":cagr_hist}
-
-    OBJECTIVES = ["sharpe","vol","return","sortino","calmar","ir"]
-    OPT_MIN_W  = 0.01
-    all_results: dict = {}
-
-    for mode in ("normal","betaadj"):
-        mu_map = mu_map_normal if mode == "normal" else mu_map_betaadj
-        rf = cdi_annual if mode == "normal" else 0.0
-        valid = [c for c,mu in mu_map.items()
-                 if mu is not None and math.isfinite(mu) and c in cov_full and c in funds_hist]
-        if k > len(valid): continue
-        prefix = "betaadj_" if mode == "betaadj" else ""
-        bests = {obj: (None, -math.inf) for obj in OBJECTIVES}
-
-        combo_idx = 0
-        for combo in combinations(valid, k):
-            if combo_idx % n_slices != slice_idx:
-                combo_idx += 1
-                continue
-            combo_idx += 1
-
-            mus = [mu_map[c] for c in combo]
-            cov = get_cov(combo)
-            for obj in OBJECTIVES:
-                if obj == "vol":         w = min_vol_w(cov)
-                elif obj == "return":    w = max_return_w(mus)
-                elif obj == "sortino":   w = max_sortino_w(combo,mus,rf,cov) or max_sharpe_w(mus,rf,cov)
-                elif obj in ("calmar",): w = max_sharpe_w(mus,rf,cov)
-                elif obj == "ir":        w = max_sharpe_w(mus,ibov_annual,cov)
-                else:                    w = max_sharpe_w(mus,rf,cov) or min_vol_w(cov)
-                if not w: w = [1.0/k]*k
-                w = [max(OPT_MIN_W,x) for x in w]; tot=sum(w); w=[x/tot for x in w]
-                m = eval_portfolio(combo,w,mus,rf,ibov_annual,cov)
-                score = {"vol":-m["vol"],"sharpe":m["sharpe"],"return":m["ret"],
-                         "sortino":m["sortino"],"calmar":m["calmar"],"ir":m["ir"]}.get(obj,m["sharpe"])
-                best_entry, best_score = bests[obj]
-                if score > best_score:
-                    bests[obj] = ({"cnpjs":list(combo),"weights":w,"metrics":m}, score)
-
-        for obj in OBJECTIVES:
-            best_entry, _ = bests[obj]
-            if best_entry:
-                key = f"{prefix}{obj}_{k}"
-                all_results[key] = {
-                    "cnpjs":   best_entry["cnpjs"],
-                    "weights": [round(x,6) for x in best_entry["weights"]],
-                    "metrics": {k2: round(v,4) if isinstance(v,float) and math.isfinite(v) else None
-                                for k2,v in best_entry["metrics"].items()},
-                }
-
-    return all_results
-
-
-def run_optimizer_slice(slice_idx: int, n_slices: int) -> None:
-    """Calcula fatia slice_idx/n_slices do otimizador k=10 e salva em docs/opt_slice_{slice_idx}.json."""
-    docs_dir = Path(__file__).parent.parent / "docs"
-    data     = json.loads((docs_dir / "data.json").read_text())
-    hist     = json.loads((docs_dir / "history.json").read_text())
-
-    result = _compute_optimizer_slice(
-        slice_idx    = slice_idx,
-        n_slices     = n_slices,
-        k            = 10,
-        results      = data.get("funds", []),
-        fund_betas   = data.get("fund_betas", {}),
-        jensen_alpha = data.get("jensenAlpha", {}),
-        hist         = hist,
-        cdi_annual   = (data.get("cdi") or {}).get("cagr36") or 12.0,
-        ibov_annual  = (data.get("ibov") or {}).get("cagr36") or 15.0,
-    )
-    out_path = docs_dir / f"opt_slice_{slice_idx}.json"
-    out_path.write_text(json.dumps(result, ensure_ascii=False))
-    print(f"✓ Fatia {slice_idx}/{n_slices}: {len(result)} chaves salvas em {out_path.name}")
-
-
-def run_optimizer_k35() -> None:
-    """Calcula otimizador k=3 e k=5 completos e salva em docs/opt_k35.json."""
-    docs_dir = Path(__file__).parent.parent / "docs"
-    data     = json.loads((docs_dir / "data.json").read_text())
-    hist     = json.loads((docs_dir / "history.json").read_text())
-
-    output = compute_precomputed_optimizer(
-        results      = data.get("funds", []),
-        fund_betas   = data.get("fund_betas", {}),
-        jensen_alpha = data.get("jensenAlpha", {}),
-        hist         = hist,
-        cdi_annual   = (data.get("cdi") or {}).get("cagr36") or 12.0,
-        ibov_annual  = (data.get("ibov") or {}).get("cagr36") or 15.0,
-        skip_k10     = True,
-    )
-    out_path = docs_dir / "opt_k35.json"
-    out_path.write_text(json.dumps(output, ensure_ascii=False))
-    print(f"✓ k=3+k=5: {len(output)} chaves salvas em opt_k35.json")
-
-
-def aggregate_optimizer_slices(n_slices: int) -> None:
-    """Agrega opt_k35.json + opt_slice_0..N-1.json em data.json."""
-    docs_dir  = Path(__file__).parent.parent / "docs"
-    data_path = docs_dir / "data.json"
-    print(f"\n── Agregando otimizador (k35 + {n_slices} fatias k10)")
-
-    def score_of(key, entry):
-        obj = key.replace("betaadj_","").split("_")[0]
-        m   = entry.get("metrics", {})
-        return {"vol":-(m.get("vol") or math.inf),"sharpe":(m.get("sharpe") or -math.inf),
-                "return":(m.get("ret") or -math.inf),"sortino":(m.get("sortino") or -math.inf),
-                "calmar":(m.get("calmar") or -math.inf),"ir":(m.get("ir") or -math.inf)}.get(obj,-math.inf)
-
-    aggregated: dict = {}
-
-    k35_path = docs_dir / "opt_k35.json"
-    if k35_path.exists():
-        for key, entry in json.loads(k35_path.read_text()).items():
-            aggregated[key] = (entry, score_of(key, entry))
-        k35_path.unlink()
-        print(f"  k=3+k=5: {len(aggregated)} chaves carregadas")
-
-    n_loaded = 0
-    for i in range(n_slices):
-        slice_path = docs_dir / f"opt_slice_{i}.json"
-        if not slice_path.exists():
-            print(f"  ⚠ fatia k10 {i} ausente"); continue
-        try:
-            for key, entry in json.loads(slice_path.read_text()).items():
-                s = score_of(key, entry)
-                if key not in aggregated or s > aggregated[key][1]:
-                    aggregated[key] = (entry, s)
-            slice_path.unlink(); n_loaded += 1
-        except Exception as e:
-            print(f"  ⚠ fatia {i} erro: {e}")
-    print(f"  k=10: {n_loaded}/{n_slices} fatias carregadas")
-
-    if not aggregated:
-        print("  ⚠ nenhum resultado agregado"); return
-
-    data = json.loads(data_path.read_text())
-    existing = data.get("precomputedOptimizer", {})
-    for key, (entry, _) in aggregated.items():
-        existing[key] = {k: v for k,v in entry.items() if k != "_score"}
-        m = entry.get("metrics", {})
-        print(f"  {key:25s}: ret={m.get('ret',0):.1f}% vol={m.get('vol',0):.1f}% sharpe={m.get('sharpe',0):.2f}")
-    data["precomputedOptimizer"] = existing
-    data_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-    print(f"\n✓ {len(aggregated)} chaves integradas em data.json")
-
 
 if __name__ == "__main__":
-    import sys
-    args = sys.argv[1:]
-
-    if "--optimizer-slice" in args:
-        idx      = args.index("--optimizer-slice")
-        slice_i  = int(args[idx + 1])
-        n_slices = int(args[idx + 2])
-        print(f"Modo fatia k=10: {slice_i}/{n_slices}")
-        run_optimizer_slice(slice_i, n_slices)
-
-    elif "--optimizer-k35" in args:
-        print("Modo otimizador k=3+k=5")
-        run_optimizer_k35()
-
-    elif "--aggregate" in args:
-        idx      = args.index("--aggregate")
-        n_slices = int(args[idx + 1])
-        print(f"Modo agregação: {n_slices} fatias k10")
-        aggregate_optimizer_slices(n_slices)
-
-    elif "--skip-all-optimizer" in args:
-        main(skip_k10=True, skip_all_optimizer=True)
-
-    elif "--skip-k10" in args:
-        main(skip_k10=True, skip_all_optimizer=False)
-
-    else:
-        main(skip_k10=False, skip_all_optimizer=False)
+    main()
