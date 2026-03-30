@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ferramentas Financeiras</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.08);
+    --text: #1a1916;
+    --muted: #7a7870;
+    --green: #1a7a52;
+    --green-light: #e8f5ee;
+    --accent: #e05c2a;
+  }
+
+  [data-theme=dark] {
+    --bg: #141412;
+    --surface: #1e1d1a;
+    --border: rgba(255,255,255,0.09);
+    --text: #e8e6e0;
+    --muted: #7a7870;
+    --green: #2db87a;
+    --green-light: #0d2e1e;
+    --accent: #f07040;
+  }
+
+  body {
+    font-family: 'Georgia', serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 2rem 1.5rem 4rem;
+    max-width: 780px;
+    margin: 0 auto;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .wordmark {
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .theme-btn {
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    padding: 5px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .theme-btn:hover { border-color: var(--text); color: var(--text); }
+
+  /* ── Hero ────────────────────────────────────────────── */
+  .hero {
+    margin-bottom: 3.5rem;
+  }
+  .hero h1 {
+    font-size: 2.4rem;
+    font-weight: normal;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 0.75rem;
+  }
+  .hero p {
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 480px;
+  }
+
+  /* ── Cards ───────────────────────────────────────────── */
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    flex: 1;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem 1.75rem 1.5rem;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    cursor: pointer;
+  }
+  .card:hover {
+    border-color: var(--text);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+    transform: translateY(-2px);
+  }
+
+  .card-tag {
+    font-family: 'Courier New', monospace;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 1.25rem;
+  }
+
+  .card-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    line-height: 1;
+  }
+
+  .card h2 {
+    font-size: 1.25rem;
+    font-weight: normal;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+    line-height: 1.2;
+  }
+
+  .card p {
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.55;
+    flex: 1;
+    margin-bottom: 1.5rem;
+  }
+
+  .card-features {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 1.75rem;
+  }
+  .card-features li {
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    padding-left: 1em;
+    position: relative;
+  }
+  .card-features li::before {
+    content: '–';
+    position: absolute;
+    left: 0;
+    color: var(--border);
+  }
+
+  .card-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    color: var(--text);
+    font-weight: normal;
+    margin-top: auto;
+    transition: gap 0.15s;
+  }
+  .card:hover .card-cta { gap: 10px; }
+
+  .card-cta svg {
+    transition: transform 0.15s;
+  }
+  .card:hover .card-cta svg { transform: translateX(2px); }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  .footer {
+    margin-top: 4rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font-family: 'Courier New', monospace;
+    font-size: 0.62rem;
+    color: var(--muted);
+  }
+
+  /* ── Mobile ──────────────────────────────────────────── */
+  @media (max-width: 560px) {
+    .hero h1 { font-size: 1.8rem; }
+    .cards { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <span class="wordmark">ferramentas financeiras</span>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☽ escuro</button>
+</div>
+
+<div class="hero">
+  <h1>O que você<br>quer analisar?</h1>
+  <p>Dois módulos independentes — fundos de investimento brasileiros e simulação de patrimônio — reunidos num só lugar.</p>
+</div>
+
+<div class="cards">
+
+  <a class="card" href="fundos.html">
+    <div class="card-tag">módulo 01</div>
+    <div class="card-icon">📊</div>
+    <h2>Ranking de Fundos</h2>
+    <p>Análise e comparação de fundos brasileiros com dados diários da CVM.</p>
+    <ul class="card-features">
+      <li>Ranking por Sharpe, Sortino, alpha</li>
+      <li>Fronteira eficiente e otimizador</li>
+      <li>Portfólio personalizado</li>
+      <li>Gráficos e análise detalhada</li>
+    </ul>
+    <span class="card-cta">
+      Abrir
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2.5 6.5h8M7 3l3.5 3.5L7 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+  </a>
+
+  <a class="card" href="simulador.html">
+    <div class="card-tag">módulo 02</div>
+    <div class="card-icon">🧮</div>
+    <h2>Simulador de Aposentadoria</h2>
+    <p>Projeção, planejamento e stress test do seu patrimônio no longo prazo.</p>
+    <ul class="card-features">
+      <li>Projeção com juros compostos</li>
+      <li>Planejamento de renda passiva</li>
+      <li>Monte Carlo (stress test)</li>
+      <li>Fase de acumulação e retirada</li>
+    </ul>
+    <span class="card-cta">
+      Abrir
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2.5 6.5h8M7 3l3.5 3.5L7 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+  </a>
+
+</div>
+
+<div class="footer">
+  dados de fundos via CVM · atualizado diariamente
+</div>
+
+<script>
+  // Persist theme across pages via localStorage
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.getElementById('themeBtn').textContent = '○ claro';
+  }
+
+  function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('theme', 'light');
+      document.getElementById('themeBtn').textContent = '☽ escuro';
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+      document.getElementById('themeBtn').textContent = '○ claro';
+    }
+  }
+</script>
+</body>
+</html>

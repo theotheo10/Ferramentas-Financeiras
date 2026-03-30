@@ -1,0 +1,51 @@
+name: Adicionar fundo(s) ao histórico
+
+on:
+  workflow_dispatch:
+    inputs:
+      fundos:
+        description: |
+          JSON com um ou mais fundos. Campos obrigatórios: cnpj, nome, exibicao, curto, tipo, trib, expo, banco.
+          Campos opcionais: expo_liquida_normal (0.0–1.0), expo_liquida_crise (0.0–1.0), benchmark ("ibov"|"sp500"|"mixed"), gross_up (true para debêntures incentivadas/fundos isentos), obs (texto livre exibido no painel).
+          
+          Exemplos de tipo: "Long Only" | "Long Biased" | "Multimercado" | "Long & Short"
+          Exemplos de expo: "Brasil" | "Internacional" | "Majoritariamente Brasil"
+          
+          Long Only Brasil → expo normal:1.0, crise:0.95, benchmark:ibov
+          Long Only Internacional → expo normal:1.0, crise:0.95, benchmark:sp500
+          Long Biased Brasil → expo normal:0.65, crise:0.40, benchmark:ibov
+          Long & Short Brasil → expo normal:0.0, crise:0.0, benchmark:ibov
+          Long & Short Internacional → expo normal:0.0, crise:0.0, benchmark:sp500
+          Multimercado → expo normal:0.30, crise:0.10, benchmark:mixed
+          
+          Exemplo mínimo:
+          [{"cnpj":"46351969000108","nome":"Opportunity Global Equity Real Institucional FIC FIF Ações IE RL","exibicao":"Opportunity Global","curto":"Opportunity","tipo":"Long Only","trib":"RV","expo":"Internacional","banco":"Itaú"}]
+        required: true
+
+jobs:
+  add-fund:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Adicionar fundo(s)
+        run: python scripts/add_fund.py '${{ github.event.inputs.fundos }}'
+
+      - name: Commit e push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked
+          git pull --rebase origin main
+          git stash pop
+          git add docs/history.json docs/data.json scripts/fetch_data.py docs/fundos.html
+          git diff --staged --quiet || git commit -m "feat: adiciona fundo(s) via add_fund workflow"
+          git push

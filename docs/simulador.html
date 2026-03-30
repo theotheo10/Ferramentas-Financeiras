@@ -1,0 +1,3085 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Juros Compostos</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.08);
+    --text: #1a1916;
+    --muted: #7a7870;
+    --green: #1a7a52;  --green-light: #e8f5ee;
+    --blue: #1a4a8a;   --blue-light: #e8eef8;
+    --amber: #a05c00;  --amber-light: #fdf3e3;
+    --red: #b83232;    --red-light: #fdeaea;
+    --accent: #e05c2a;
+  }
+  [data-theme=dark] {
+    --bg: #141412;
+    --surface: #1e1d1a;
+    --border: rgba(255,255,255,0.09);
+    --text: #e8e6e0;
+    --muted: #7a7870;
+    --green: #2db87a;  --green-light: #0d2e1e;
+    --blue: #4d8fd4;   --blue-light: #0d1e33;
+    --amber: #d4882a;  --amber-light: #2a1e07;
+    --red: #e05050;    --red-light: #2a0f0f;
+    --accent: #f07040;
+  }
+
+  body {
+    font-family: 'Georgia', serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1.5rem 4rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  /* ── Nav / tabs ─────────────────────────────────────────────────────── */
+  nav { display: flex; gap: 6px; margin-bottom: 2.5rem; flex-wrap: wrap; align-items: center; }
+  nav button {
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    padding: 5px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  nav button:hover { border-color: var(--text); color: var(--text); }
+  nav button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  nav a.back-link {
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    color: var(--muted); text-decoration: none; display: inline-flex;
+    align-items: center; gap: 5px; padding: 5px 14px; border-radius: 20px;
+    border: 1px solid var(--border); transition: all 0.15s; white-space: nowrap;
+  }
+  nav a.back-link:hover { border-color: var(--text); color: var(--text); }
+
+  /* ── Section panels ─────────────────────────────────────────────────── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Typography ─────────────────────────────────────────────────────── */
+  h1 { font-size: 1.6rem; font-weight: normal; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
+  .subtitle { font-size: 0.85rem; color: var(--muted); font-family: 'Courier New', monospace; margin-bottom: 2rem; }
+  .section-label {
+    font-family: 'Courier New', monospace; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--muted); margin-bottom: 0.75rem; margin-top: 1.5rem;
+  }
+  .section-label:first-of-type { margin-top: 0; }
+  .phase-heading { font-size: 1.3rem; font-weight: normal; letter-spacing: -0.02em; margin-bottom: 0.2rem; margin-top: 2.5rem; }
+  .phase-divider { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0 2rem; }
+  .explanation { background: var(--amber-light); border-radius: 8px; padding: 10px 14px; font-size: 0.78rem; color: var(--amber); font-family: 'Courier New', monospace; line-height: 1.5; margin-bottom: 1.5rem; }
+
+  /* ── Controls ───────────────────────────────────────────────────────── */
+  .controls-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 2rem; margin-bottom: 1.5rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem 1.5rem;
+  }
+  .controls-grid h4 {
+    grid-column: 1/-1; font-size: 0.72rem; font-weight: 500;
+    font-family: 'Courier New', monospace; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    padding-bottom: 4px; border-bottom: 0.5px solid var(--border); margin-bottom: 2px;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 5px; }
+  .ctrl-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .ctrl-header label { font-size: 0.78rem; color: var(--muted); font-family: 'Courier New', monospace; }
+  .ctrl-val {
+    font-size: 0.9rem; font-weight: bold; color: var(--text);
+    font-family: 'Courier New', monospace; cursor: text;
+    border-bottom: 1px dashed transparent; transition: border-color 0.15s;
+    outline: none; min-width: 4ch; text-align: right;
+  }
+  .ctrl-val:hover { border-bottom-color: var(--muted); }
+  .ctrl-val.editing { border-bottom: 1.5px solid var(--accent); color: var(--accent) !important; background: transparent; }
+  input[type=range] {
+    -webkit-appearance: none; width: 100%; height: 3px;
+    background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--text); cursor: pointer; transition: transform 0.1s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .inflation-ctrl input[type=range]::-webkit-slider-thumb { background: var(--red); }
+  .rate-ctrl input[type=range]::-webkit-slider-thumb { background: var(--green); }
+  .vol-ctrl  input[type=range]::-webkit-slider-thumb { background: var(--amber); }
+  /* prazo thumb color is set dynamically via JS */
+
+  /* ── Stats ──────────────────────────────────────────────────────────── */
+  .stats {
+    display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 10px; margin-bottom: 1.5rem; align-items: stretch;
+  }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px 22px;
+    display: flex; flex-direction: column;
+    border-top: 3px solid var(--muted);
+  }
+  .stat .lbl { font-size: 0.62rem; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+  .stat .val { font-size: 1.05rem; font-weight: bold; color: var(--text); line-height: 1.2; }
+  .stat .sub { font-size: 0.65rem; color: var(--muted); font-family: 'Courier New', monospace; margin-top: 5px; }
+  .stat .cagr { font-size: 0.78rem; font-weight: bold; font-family: 'Courier New', monospace; margin-top: 5px; }
+  .stat.green .val { color: var(--green); } .stat.red .val { color: var(--red); }
+  .stat.amber .val { color: var(--amber); } .stat.blue .val { color: var(--blue); }
+  .stat.green { border-top-color: var(--green); }
+  .stat.red    { border-top-color: var(--red); }
+  .stat.amber  { border-top-color: var(--amber); }
+  .stat.blue   { border-top-color: var(--blue); }
+  .stat.green .cagr { color: var(--green); }
+  .stat.red   .cagr { color: var(--red); }
+  .stat.amber .cagr { color: var(--amber); }
+  .stat.blue  .cagr { color: var(--blue); }
+
+  /* ── Charts ─────────────────────────────────────────────────────────── */
+  .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem; overflow: visible; }
+  .chart-tabs { display: flex; gap: 6px; margin-bottom: 1rem; }
+  .tab { font-family: 'Courier New', monospace; font-size: 0.72rem; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+  .leg { display: flex; align-items: center; gap: 5px; font-size: 0.7rem; font-family: 'Courier New', monospace; color: var(--muted); }
+  .leg-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+  .chart-container { position: relative; width: 100%; height: clamp(200px, 35vw, 280px); }
+  .chart-container canvas { display: block; touch-action: pan-y; }
+
+  /* ── Comparison cards ───────────────────────────────────────────────── */
+  .comparison { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+  .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+  .comp-card { border-radius: 8px; padding: 1rem 1.25rem; }
+  .comp-card.nominal { background: var(--blue-light); } .comp-card.real { background: var(--green-light); }
+  .comp-card .cc-label { font-family: 'Courier New', monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .comp-card.nominal .cc-label { color: var(--blue); } .comp-card.real .cc-label { color: var(--green); }
+  .comp-card .cc-val { font-size: 1.4rem; font-weight: bold; line-height: 1; margin-bottom: 4px; }
+  .comp-card.nominal .cc-val { color: var(--blue); } .comp-card.real .cc-val { color: var(--green); }
+  .comp-card .cc-sub { font-size: 0.72rem; font-family: 'Courier New', monospace; opacity: 0.7; }
+  .comp-card.nominal .cc-sub { color: var(--blue); } .comp-card.real .cc-sub { color: var(--green); }
+  .inflation-note { background: var(--amber-light); border-radius: 8px; padding: 10px 14px; font-size: 0.78rem; color: var(--amber); font-family: 'Courier New', monospace; line-height: 1.5; }
+  .inflation-note .inf-body { display: none; margin-top: 8px; }
+  .inflation-note.open .inf-body { display: block; }
+
+  /* ── Table ──────────────────────────────────────────────────────────── */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+  th { text-align: left; font-family: 'Courier New', monospace; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--border); font-weight: normal; white-space: nowrap; }
+  td { padding: 6px 6px; border-bottom: 1px solid var(--border); font-family: 'Courier New', monospace; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .g { color: var(--green); } .r { color: var(--red); } .b { color: var(--blue); }
+  td strong { color: var(--text); }
+
+  /* ── Quanto Poupar specifics ────────────────────────────────────────── */
+  .mode-tabs { display: flex; gap: 6px; margin-bottom: 2rem; flex-wrap: wrap; }
+  .mode-tab { font-family: 'Courier New', monospace; font-size: 0.72rem; padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .mode-tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .answer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 1rem; align-items: stretch; }
+  .answer-card { background: var(--surface); border-radius: 14px; padding: 1.4rem 1.5rem 1.2rem; display: flex; flex-direction: column; position: relative; overflow: hidden; border: 1px solid var(--border); }
+  .answer-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .answer-card.finite::before { background: var(--blue); } .answer-card.perp::before { background: var(--amber); }
+  .ac-label { font-family: 'Courier New', monospace; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 0.6rem; }
+  .ac-scenario { font-family: 'Courier New', monospace; font-size: 0.75rem; font-weight: bold; margin-bottom: 0.15rem; }
+  .answer-card.finite .ac-scenario { color: var(--blue); } .answer-card.perp .ac-scenario { color: var(--amber); }
+  .ac-patrimonio { font-size: 2rem; font-weight: bold; line-height: 1; color: var(--text); margin-bottom: 2px; }
+  .ac-real { font-size: 0.7rem; font-family: 'Courier New', monospace; color: var(--muted); margin-bottom: 0.9rem; }
+  .ac-divider { height: 0.5px; background: var(--border); margin-bottom: 0.75rem; }
+  .ac-aporte-label { font-family: 'Courier New', monospace; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 2px; }
+  .ac-aporte { font-size: 1.15rem; font-weight: bold; color: var(--text); margin-bottom: 0.15rem; }
+  .ac-rate { font-size: 0.7rem; font-family: 'Courier New', monospace; line-height: 1.4; margin-bottom: 0.1rem; }
+  .ac-depletion { font-family: 'Courier New', monospace; font-size: 0.72rem; font-weight: bold; padding-top: 0.75rem; }
+  .ac-years { font-size: 2.8rem; font-weight: bold; line-height: 1; color: var(--text); margin-bottom: 2px; letter-spacing: -0.03em; }
+  .ac-years span { font-size: 1rem; font-weight: normal; color: var(--muted); letter-spacing: 0; }
+  .ac-years-label { font-family: 'Courier New', monospace; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.2rem; }
+  .sustain-banner { border-radius: 10px; padding: 12px 16px; margin-bottom: 1.5rem; font-family: 'Courier New', monospace; font-size: 0.8rem; line-height: 1.6; }
+  .sensitivity-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.25rem; }
+  .sens-row { display: grid; grid-template-columns: 72px 1fr 120px; align-items: center; gap: 10px; margin-bottom: 7px; font-family: 'Courier New', monospace; font-size: 0.78rem; }
+  .sens-bar-bg { height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .sens-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+  .charts-stack { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; }
+
+  /* ── Monte Carlo specifics ──────────────────────────────────────────── */
+  .survival-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.25rem; margin-bottom: 1rem; }
+  .surv-row { display: grid; grid-template-columns: 130px 1fr 80px; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .surv-bar-bg { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .surv-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .surv-label { font-family: 'Courier New', monospace; font-size: 0.72rem; color: var(--muted); }
+  .surv-pct { font-family: 'Courier New', monospace; font-size: 0.78rem; font-weight: bold; text-align: right; }
+  .verdict { border-radius: 10px; padding: 12px 16px; margin-bottom: 1.5rem; font-family: 'Courier New', monospace; font-size: 0.8rem; line-height: 1.6; }
+  .scen-btn { font-family: 'Courier New', monospace; font-size: 0.78rem; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .scen-btn:hover { border-color: var(--text); color: var(--text); }
+  .scen-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  /* ── Tooltip ────────────────────────────────────────────────────────── */
+  .tooltip-wrap { position: relative; display: inline-block; }
+  .tooltip-icon { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; border: 1px solid currentColor; font-size: 0.6rem; font-family: Georgia, serif; cursor: default; opacity: 0.45; vertical-align: middle; margin-left: 4px; position: relative; top: -1px; line-height: 1; }
+  .tooltip-icon:hover { opacity: 1; }
+  .tooltip-box { display: none; position: fixed; width: 270px; background: var(--text); color: var(--bg); font-family: 'Courier New', monospace; font-size: 0.68rem; line-height: 1.5; padding: 10px 12px; border-radius: 8px; z-index: 9999; font-weight: normal; pointer-events: none; }
+  .tooltip-box-up { display: none; position: fixed; width: 270px; background: var(--text); color: var(--bg); font-family: 'Courier New', monospace; font-size: 0.68rem; line-height: 1.5; padding: 10px 12px; border-radius: 8px; z-index: 9999; font-weight: normal; pointer-events: none; }
+
+  [data-theme=dark] input[type=range] { background: rgba(255,255,255,0.18); }
+
+  @media (max-width: 620px) {
+    .controls-grid, .answer-grid, .comparison-grid { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .surv-row { grid-template-columns: 90px 1fr 60px; }
+    h1 { font-size: 1.3rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────────────────────────────── -->
+<nav>
+  <button class="active" onclick="showPanel('sim', this)">Projetar</button>
+  <button onclick="showPanel('qp', this)">Planejar</button>
+  <button id="nav-mc-btn" onclick="showPanel('mc', this)">Estressar</button>
+  <a class="back-link" href="fundos.html" style="margin-left:auto;" title="Ir para o Ranking de Fundos">📊 Fundos</a>
+  <a class="back-link" href="index.html">← Menu</a>
+  <button id="themeBtn" onclick="toggleTheme()" title="Alternar modo escuro">◑</button>
+</nav>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     PANEL 1 — SIMULADOR
+     ════════════════════════════════════════════════════════════════════════ -->
+<div id="panel-sim" class="panel active">
+
+<h1>Projetar</h1>
+<p class="subtitle">quanto seu patrimônio vale daqui a N anos</p>
+
+<p class="phase-heading">Fase de Acumulação</p>
+<p class="subtitle">construção de patrimônio</p>
+
+<div class="section-label">Parâmetros</div>
+<div class="controls-grid">
+  <div class="ctrl">
+    <div class="ctrl-header"><label>Aporte inicial</label><span class="ctrl-val" id="sim-lP" contenteditable="true" spellcheck="false">R$ 100.000</span></div>
+    <input type="range" id="sim-sP" min="0" max="1000000" step="10000" value="100000">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-header"><label>Aporte mensal (1º mês)</label><span class="ctrl-val" id="sim-lM" contenteditable="true" spellcheck="false">R$ 3.000</span></div>
+    <input type="range" id="sim-sM" min="0" max="50000" step="500" value="3000">
+  </div>
+  <div class="ctrl rate-ctrl">
+    <div class="ctrl-header"><label>Taxa de juros anual</label><span class="ctrl-val" id="sim-lR" contenteditable="true" spellcheck="false" style="color:var(--green)">15%</span></div>
+    <input type="range" id="sim-sR" min="1" max="30" step="0.5" value="15">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-header"><label>Crescimento anual dos aportes</label><span class="ctrl-val" id="sim-lG" contenteditable="true" spellcheck="false">5%</span></div>
+    <input type="range" id="sim-sG" min="0" max="20" step="0.5" value="5">
+  </div>
+  <div class="ctrl prazo-ctrl">
+    <div class="ctrl-header"><label>Prazo</label><span class="ctrl-val" id="sim-lY" contenteditable="true" spellcheck="false">30 anos</span></div>
+    <input type="range" id="sim-sY" min="1" max="50" step="1" value="30">
+  </div>
+  <div class="ctrl inflation-ctrl">
+    <div class="ctrl-header"><label>Taxa de inflação anual</label><span class="ctrl-val" id="sim-lI" contenteditable="true" spellcheck="false" style="color:var(--red)">5%</span></div>
+    <input type="range" id="sim-sI" min="0" max="20" step="0.5" value="5">
+  </div>
+</div>
+
+<div class="stats" id="sim-statsRow"></div>
+<div id="sim-zeroBanner" style="display:none;border-radius:10px;padding:12px 18px;margin-bottom:1.5rem;font-family:'Courier New',monospace;font-size:0.82rem;line-height:1.6;background:var(--amber-light);border:1px solid var(--amber);color:var(--amber);">⚠ Defina um aporte inicial ou um aporte mensal para iniciar a simulação.</div>
+<div id="sim-fiBanner" style="display:none;border-radius:10px;padding:12px 18px;margin-bottom:1.5rem;font-family:'Courier New',monospace;font-size:0.82rem;line-height:1.6;background:var(--green-light);border:1px solid var(--green);color:var(--green);"></div>
+
+<div style="margin-bottom:1.5rem;text-align:right;">
+  <button onclick="sendToEstressar()" style="font-family:'Courier New',monospace;font-size:0.72rem;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--text)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+    → Usar estes parâmetros no Estressar
+  </button>
+</div>
+
+<div class="section-label">Nominal vs. real (corrigido pela inflação)</div>
+<div class="comparison">
+  <div class="comparison-grid">
+    <div class="comp-card nominal"><div class="cc-label">Saldo nominal</div><div class="cc-val" id="sim-nominalVal">—</div><div class="cc-sub" id="sim-nominalSub">—</div></div>
+    <div class="comp-card real"><div class="cc-label">Saldo real (R$ de hoje)</div><div class="cc-val" id="sim-realVal">—</div><div class="cc-sub" id="sim-realSub">—</div></div>
+  </div>
+  <div class="inflation-note" id="sim-inflNote">
+    <div onclick="this.parentElement.classList.toggle('open');this.querySelector('.arr').textContent=this.parentElement.classList.contains('open')?'▲':'▼'" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;">
+      <span style="font-size:0.78rem;">Sobre a inflação</span><span class="arr" style="font-size:0.68rem;opacity:0.7;margin-left:8px;">▼</span>
+    </div>
+    <div class="inf-body" id="sim-inflText">—</div>
+  </div>
+</div>
+
+<div class="section-label">Evolução do patrimônio</div>
+<div class="chart-wrap">
+  <div class="chart-tabs">
+    <button class="tab active" onclick="simSetTab('stacked',this)">Composição</button>
+    <button class="tab" onclick="simSetTab('nominal_vs_real',this)">Nominal vs. real</button>
+    <button class="tab" onclick="simSetTab('annual_gain',this)">Ganho anual</button>
+  </div>
+  <div class="legend" id="sim-legendEl"></div>
+  <div class="chart-container"><canvas id="sim-chart"></canvas></div>
+</div>
+
+<div class="section-label">Anos de referência</div>
+<div class="table-wrap">
+  <table><thead><tr><th>Data</th><th>Saldo nominal</th><th>Saldo real</th><th>Erosão inflação</th><th>Ganho anual</th><th>Multiplicador</th><th>Aporte mensal</th></tr></thead>
+  <tbody id="sim-tbody"></tbody></table>
+</div>
+<div style="margin-top:6px;text-align:right;">
+  <button onclick="downloadCSV('acumulacao')" style="font-family:'Courier New',monospace;font-size:0.68rem;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--text)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">↓ CSV</button>
+</div>
+
+<div style="margin:2rem 0 0;">
+  <button id="sim-compareToggleBtn" onclick="simToggleCompare()" style="font-family:'Courier New',monospace;font-size:0.78rem;padding:8px 18px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;">
+    ＋ Comparar cenário alternativo
+  </button>
+</div>
+<div id="sim-comparePanel" style="display:none;margin-top:1.5rem;">
+  <p class="phase-heading">Cenário alternativo</p>
+  <p class="subtitle" style="margin-bottom:1.2rem;">altere só o que quiser — o resto herda do cenário principal</p>
+  <div class="controls-grid" style="margin-bottom:1rem;">
+    <div class="ctrl"><div class="ctrl-header"><label>Aporte inicial</label><span class="ctrl-val" id="sim-c2lP" contenteditable="true" spellcheck="false">R$ 100.000</span></div><input type="range" id="sim-c2sP" min="0" max="1000000" step="10000" value="100000"></div>
+    <div class="ctrl"><div class="ctrl-header"><label>Aporte mensal</label><span class="ctrl-val" id="sim-c2lM" contenteditable="true" spellcheck="false">R$ 3.000</span></div><input type="range" id="sim-c2sM" min="0" max="50000" step="500" value="3000"></div>
+    <div class="ctrl"><div class="ctrl-header"><label>Taxa de juros anual</label><span class="ctrl-val" id="sim-c2lR">15%</span></div><input type="range" id="sim-c2sR" min="1" max="30" step="0.5" value="15"></div>
+    <div class="ctrl"><div class="ctrl-header"><label>Crescimento anual dos aportes</label><span class="ctrl-val" id="sim-c2lG">5%</span></div><input type="range" id="sim-c2sG" min="0" max="20" step="0.5" value="5"></div>
+  </div>
+  <div class="legend" style="margin-bottom:8px;">
+    <div class="leg"><div class="leg-dot" style="background:#1a4a8a;"></div>Cenário principal</div>
+    <div class="leg"><div class="leg-dot" style="background:#e05c2a;"></div>Cenário alternativo</div>
+  </div>
+  <div style="position:relative;width:100%;height:260px;"><canvas id="sim-compareChart"></canvas></div>
+  <div class="stats" id="sim-compareStats" style="margin-top:1rem;"></div>
+</div>
+
+<hr class="phase-divider">
+<p class="phase-heading">Fase de Retirada</p>
+<p class="subtitle">quanto custa sua aposentadoria?</p>
+
+<div class="section-label">Parâmetros</div>
+<div class="controls-grid">
+  <div class="ctrl">
+    <div class="ctrl-header"><label>Patrimônio inicial</label><span class="ctrl-val" id="sim-dlS" contenteditable="true" spellcheck="false">—</span></div>
+    <input type="range" id="sim-dsS" min="100000" max="10000000" step="100000" value="1000000">
+    <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+      <span style="font-size:0.68rem;font-family:'Courier New',monospace;color:var(--muted);" id="sim-dsSyncNote">sincronizado automaticamente · edite para substituir</span>
+      <button id="sim-ddResyncBtn" onclick="simDdResync()" style="display:none;font-family:'Courier New',monospace;font-size:0.68rem;padding:2px 8px;border-radius:20px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap;">↺ ressincronizar</button>
+    </div>
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-header"><label>Custo de vida mensal <span style="font-size:0.65rem;color:var(--muted)">(R$ de hoje)</span></label><span class="ctrl-val" id="sim-dlC" contenteditable="true" spellcheck="false" style="color:var(--red)">R$&nbsp;20.000</span></div>
+    <input type="range" id="sim-dsC" min="1000" max="100000" step="1000" value="20000">
+    <span style="font-size:0.68rem;font-family:'Courier New',monospace;color:var(--muted);margin-top:2px;">corrigido pela inflação da acumulação e da retirada</span>
+  </div>
+  <div class="ctrl rate-ctrl"><div class="ctrl-header"><label>Taxa de juros anual</label><span class="ctrl-val" id="sim-dlR" style="color:var(--green)">10%</span></div><input type="range" id="sim-dsR" min="0" max="30" step="0.5" value="10"></div>
+  <div class="ctrl inflation-ctrl"><div class="ctrl-header"><label>Taxa de inflação anual</label><span class="ctrl-val" id="sim-dlI" style="color:var(--red)">5%</span></div><input type="range" id="sim-dsI" min="0" max="20" step="0.5" value="5"></div>
+  <div class="ctrl"><div class="ctrl-header"><label>Prazo de retirada</label><span class="ctrl-val" id="sim-dlY">30 anos</span></div><input type="range" id="sim-dsY" min="5" max="60" step="1" value="30"></div>
+</div>
+
+<div id="sim-ddVerdict" style="border-radius:10px;padding:14px 18px;margin-bottom:1.5rem;font-family:'Courier New',monospace;font-size:0.82rem;line-height:1.6;"></div>
+<div class="stats" id="sim-ddStatsRow"></div>
+<div id="sim-ddDurationNote" style="font-family:'Courier New',monospace;font-size:0.76rem;color:var(--muted);margin:-0.5rem 0 1rem;line-height:1.5;"></div>
+<div id="sim-ddRealWarn" style="display:none;border-radius:8px;padding:10px 14px;margin-bottom:1rem;font-family:'Courier New',monospace;font-size:0.76rem;line-height:1.5;background:var(--amber-light);border:1px solid var(--amber);color:var(--amber);"></div>
+
+<div class="section-label">Nominal vs. real na fase de retirada</div>
+<div class="comparison" style="margin-bottom:1rem;">
+  <div class="comparison-grid">
+    <div class="comp-card nominal"><div class="cc-label">Saldo ao fim das retiradas</div><div class="cc-val" id="sim-ddNominalVal">—</div><div class="cc-sub" id="sim-ddNominalSub">—</div></div>
+    <div class="comp-card real"><div class="cc-label">Saldo real (R$ de hoje)</div><div class="cc-val" id="sim-ddRealVal">—</div><div class="cc-sub" id="sim-ddRealSub">—</div></div>
+  </div>
+  <div class="inflation-note" id="sim-ddInflNote">
+    <div onclick="this.parentElement.classList.toggle('open');this.querySelector('.arr').textContent=this.parentElement.classList.contains('open')?'▲':'▼'" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;">
+      <span style="font-size:0.78rem;">Sobre a inflação</span><span class="arr" style="font-size:0.68rem;opacity:0.7;margin-left:8px;">▼</span>
+    </div>
+    <div class="inf-body" id="sim-ddInflText">—</div>
+  </div>
+</div>
+
+<div class="section-label">Evolução do saldo</div>
+<div class="chart-wrap" style="margin-bottom:1rem;">
+  <div class="chart-tabs" id="sim-ddTabRow">
+    <button class="tab active" onclick="simSetDdTab('balance',this)">Saldo</button>
+    <button class="tab" onclick="simSetDdTab('nominal_vs_real',this)">Nominal vs. real</button>
+    <button class="tab" onclick="simSetDdTab('withdrawals',this)">Retiradas vs. juros</button>
+  </div>
+  <div class="legend" id="sim-ddLegendEl"></div>
+  <div class="chart-container"><canvas id="sim-ddChart"></canvas></div>
+</div>
+
+<div class="section-label">Anos de referência</div>
+<div class="table-wrap">
+  <table><thead><tr><th>Data</th><th>Saldo nominal</th><th>Saldo real</th><th>Retirada anual</th><th>Retirada mensal</th><th>Taxa de retirada</th></tr></thead>
+  <tbody id="sim-ddTbody"></tbody></table>
+</div>
+<div style="margin-top:6px;text-align:right;">
+  <button onclick="downloadCSV('retirada')" style="font-family:'Courier New',monospace;font-size:0.68rem;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--text)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">↓ CSV</button>
+</div>
+
+</div><!-- /panel-sim -->
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     PANEL 2 — PLANEJAR (Quanto Poupar)
+     ════════════════════════════════════════════════════════════════════════ -->
+<div id="panel-qp" class="panel">
+
+<h1>Planejar</h1>
+<p class="subtitle">quanto poupar para se aposentar</p>
+
+<div class="section-label">Modo</div>
+<div class="mode-tabs">
+  <button class="mode-tab active" onclick="qpSetMode('plan',this)">Qual aporte preciso?</button>
+  <button class="mode-tab" onclick="qpSetMode('years',this)">Em quantos anos?</button>
+</div>
+
+<div class="explanation" id="qp-modeExpl">—</div>
+
+<div class="section-label">Parâmetros</div>
+<div class="controls-grid" id="qp-controlsGrid"></div>
+
+<div class="section-label">Resultado: taxa escolhida vs. ponto de sustentabilidade</div>
+<div class="answer-grid" id="qp-answerGrid"></div>
+<div class="sustain-banner" id="qp-sustainBanner"></div>
+<div class="stats" id="qp-statsRow"></div>
+
+<div class="section-label" id="qp-chartSectionLabel">Trajetória de retirada</div>
+<div class="charts-stack">
+  <div class="chart-wrap" id="qp-scenarioCompWrap">
+    <div style="font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Comparação de cenários — três patrimônios, fase de retirada</div>
+    <div style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:8px;" id="qp-scenarioCompSubtitle"></div>
+    <div class="legend" id="qp-scenarioCompLegend"></div>
+    <div class="chart-container" style="height:clamp(200px,35vw,280px);"><canvas id="qp-scenarioCompChart"></canvas></div>
+  </div>
+  <div class="chart-wrap" id="qp-longevityWrap">
+    <div style="font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Trajetória de retirada — sensibilidade aos juros</div>
+    <div style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:8px;" id="qp-longevitySubtitle"></div>
+    <div class="legend" id="qp-longevityLegend"></div>
+    <div class="chart-container" style="height:clamp(220px,38vw,300px);"><canvas id="qp-longevityChart"></canvas></div>
+  </div>
+  <div class="chart-wrap" id="qp-patrimonioWrap">
+    <div style="font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Patrimônio alvo por taxa de retirada</div>
+    <div style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:8px;" id="qp-patrimonioSubtitle"></div>
+    <div class="legend" id="qp-patrimonioLegend"></div>
+    <div class="chart-container" style="height:clamp(220px,38vw,300px);"><canvas id="qp-patrimonioChart"></canvas></div>
+  </div>
+  <div class="chart-wrap" id="qp-accumWrap">
+    <div class="chart-title" style="font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;" id="qp-accumTitle">Arco completo — acumulação e retirada</div>
+    <div style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:8px;" id="qp-runwaySubtitle"></div>
+    <div class="legend" id="qp-accumLegend"></div>
+    <div class="chart-container" style="height:clamp(220px,38vw,300px);"><canvas id="qp-accumChart"></canvas></div>
+  </div>
+  <div class="chart-wrap" id="qp-drawdownWrap" style="display:none;"><div class="chart-title" style="font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Fase de retirada</div><div class="legend" id="qp-drawdownLegend"></div><div class="chart-container"><canvas id="qp-drawdownChart"></canvas></div></div>
+</div>
+
+<div class="section-label" id="qp-sensLabel">Sensibilidade — aporte necessário por taxa de juros</div>
+<div class="sensitivity-wrap" id="qp-sensitivityWrap"></div>
+
+</div><!-- /panel-qp -->
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     PANEL 3 — ESTRESSAR (Monte Carlo)
+     ════════════════════════════════════════════════════════════════════════ -->
+<div id="panel-mc" class="panel">
+
+<h1>Estressar</h1>
+<p class="subtitle">e se o mercado não cooperar?</p>
+
+<div class="explanation">
+  Em vez de assumir retornos fixos, o Monte Carlo sorteia retornos anuais aleatórios em torno da média para cada cenário simulado — como acontece na realidade. O resultado mostra um corredor de possibilidades tanto na fase de acumulação quanto na de retirada, e a probabilidade do seu patrimônio sobreviver ao prazo completo.
+</div>
+
+<p class="phase-heading">Fase de Acumulação</p>
+<p class="subtitle">construção de patrimônio</p>
+
+<div class="section-label">Parâmetros</div>
+<div class="controls-grid">
+  <div class="ctrl"><div class="ctrl-header"><label>Patrimônio inicial</label><span class="ctrl-val" id="mc-lP" contenteditable="true" spellcheck="false">R$ 100.000</span></div><input type="range" id="mc-sP" min="0" max="2000000" step="10000" value="100000"></div>
+  <div class="ctrl"><div class="ctrl-header"><label>Aporte mensal (1º mês)</label><span class="ctrl-val" id="mc-lM" contenteditable="true" spellcheck="false">R$ 3.000</span></div><input type="range" id="mc-sM" min="0" max="50000" step="500" value="3000"></div>
+  <div class="ctrl">
+    <div class="ctrl-header"><label>Crescimento anual dos aportes <span class="tooltip-wrap"><span class="tooltip-icon">?</span><span class="tooltip-box">Taxa anual de crescimento do aporte — independente da inflação. 0% = aporte nominal fixo. Igual à inflação = poder de compra constante. Acima = esforço real crescente.</span></span></label><span class="ctrl-val" id="mc-lG" contenteditable="true" spellcheck="false">5%</span></div>
+    <input type="range" id="mc-sG" min="0" max="20" step="0.5" value="5">
+  </div>
+  <div class="ctrl prazo-ctrl"><div class="ctrl-header"><label>Prazo de acumulação (anos)</label><span class="ctrl-val" id="mc-lY" contenteditable="true" spellcheck="false">30 anos</span></div><input type="range" id="mc-sY" min="1" max="60" step="1" value="30"></div>
+  <div class="ctrl inflation-ctrl"><div class="ctrl-header"><label>Inflação anual</label><span class="ctrl-val" id="mc-lI" contenteditable="true" spellcheck="false" style="color:var(--red)">5%</span></div><input type="range" id="mc-sI" min="0" max="20" step="0.5" value="5"></div>
+  <h4>Retorno na acumulação</h4>
+  <div class="ctrl rate-ctrl"><div class="ctrl-header"><label>Retorno médio anual</label><span class="ctrl-val" id="mc-lR" contenteditable="true" spellcheck="false" style="color:var(--green)">22%</span></div><input type="range" id="mc-sR" min="1" max="30" step="0.5" value="22"></div>
+  <div class="ctrl vol-ctrl">
+    <div class="ctrl-header"><label>Volatilidade (σ anual) <span class="tooltip-wrap"><span class="tooltip-icon">?</span><span class="tooltip-box">Desvio padrão dos retornos anuais. Tarpon GT σ ≈ 22%, Ártica σ ≈ 23%, Organon σ ≈ 26%. Ibovespa σ ≈ 18%. Renda fixa ≈ 2–5%. Portfólio misto ≈ 10–18%.</span></span></label><span class="ctrl-val" id="mc-lV" contenteditable="true" spellcheck="false" style="color:var(--amber)">22%</span></div>
+    <input type="range" id="mc-sV" min="1" max="40" step="0.5" value="22">
+  </div>
+</div>
+
+<!-- Regime switching panel -->
+<div style="display:flex;justify-content:flex-end;margin-bottom:1rem;">
+  <button id="mc-regimeToggleBtn" onclick="mcToggleRegime()" style="font-family:'Courier New',monospace;font-size:0.72rem;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--text)';this.style.color='var(--text)'" onmouseout="this.style.borderColor=MCState.regimeOpen?'var(--accent)':'var(--border)';this.style.color=MCState.regimeOpen?'var(--accent)':'var(--muted)'">
+    ⚙ Modelo avançado — regimes de mercado
+  </button>
+</div>
+<div id="mc-regimePanel" style="display:none;margin-bottom:1.5rem;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem 1.5rem;">
+    <p style="font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);line-height:1.6;margin-bottom:1.2rem;">O mercado alterna entre períodos de bull (alta, baixa volatilidade) e bear (baixa, alta volatilidade). Uma cadeia de Markov simples modela as transições — cada ano o regime pode mudar com a probabilidade definida abaixo. Quando ativo, substitui o retorno médio e a volatilidade da <strong>fase de acumulação</strong>. A fase de retirada continua usando os parâmetros de retorno e volatilidade definidos nos sliders.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+      <div style="background:rgba(26,122,82,0.05);border:1px solid rgba(26,122,82,0.15);border-radius:10px;padding:1rem;">
+        <div style="font-family:'Courier New',monospace;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--green);margin-bottom:0.75rem;">Bull market</div>
+        <div class="ctrl"><div class="ctrl-header"><label>Retorno médio</label><span class="ctrl-val" id="mc-lBullR" contenteditable="true" spellcheck="false" style="color:var(--green)">30%</span></div><input type="range" id="mc-sBullR" min="-50" max="50" step="0.5" value="30"></div>
+        <div class="ctrl vol-ctrl" style="margin-top:0.5rem;"><div class="ctrl-header"><label>Volatilidade (σ)</label><span class="ctrl-val" id="mc-lBullV" contenteditable="true" spellcheck="false" style="color:var(--amber)">18%</span></div><input type="range" id="mc-sBullV" min="1" max="40" step="0.5" value="18"></div>
+        <div class="ctrl" style="margin-top:0.5rem;"><div class="ctrl-header"><label style="color:var(--muted)">P(permanecer bull)</label><span class="ctrl-val" id="mc-lBullP" contenteditable="true" spellcheck="false">75%</span></div><input type="range" id="mc-sBullP" min="50" max="99" step="1" value="75"></div>
+      </div>
+      <div style="background:rgba(184,50,50,0.05);border:1px solid rgba(184,50,50,0.15);border-radius:10px;padding:1rem;">
+        <div style="font-family:'Courier New',monospace;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--red);margin-bottom:0.75rem;">Bear market</div>
+        <div class="ctrl"><div class="ctrl-header"><label>Retorno médio</label><span class="ctrl-val" id="mc-lBearR" contenteditable="true" spellcheck="false" style="color:var(--red)">-5%</span></div><input type="range" id="mc-sBearR" min="-50" max="20" step="0.5" value="-5"></div>
+        <div class="ctrl vol-ctrl" style="margin-top:0.5rem;"><div class="ctrl-header"><label>Volatilidade (σ)</label><span class="ctrl-val" id="mc-lBearV" contenteditable="true" spellcheck="false" style="color:var(--amber)">22%</span></div><input type="range" id="mc-sBearV" min="1" max="60" step="0.5" value="22"></div>
+        <div class="ctrl" style="margin-top:0.5rem;"><div class="ctrl-header"><label style="color:var(--muted)">P(permanecer bear)</label><span class="ctrl-val" id="mc-lBearP" contenteditable="true" spellcheck="false">30%</span></div><input type="range" id="mc-sBearP" min="30" max="99" step="1" value="30"></div>
+      </div>
+    </div>
+    <div id="mc-regimeStats" style="margin-top:1rem;font-family:'Courier New',monospace;font-size:0.7rem;color:var(--muted);"></div>
+    <div style="border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);">
+        <input type="checkbox" id="mc-fatTailsCheck" onchange="mcUpdateDebounced()" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent);">
+        Caudas gordas (fat tails)
+      </label>
+      <span id="mc-fatTailsNote" style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--muted);opacity:0.8;line-height:1.5;">
+        Mistura gaussiana calibrada para o mercado brasileiro de ações: 1,7% de probabilidade mensal de um "mês de crise" — equivalente a ~6 meses extremos em 30 anos — com retorno extra de −12 p.p. e volatilidade 2,5× maior. Baseado nos meses com perdas acima de −15% observados nas crises brasileiras de 1998, 2002, 2008, 2015 e 2020.
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="section-label">Corredor de resultados — acumulação</div>
+<div class="chart-wrap" style="position:relative;">
+  <div class="legend" id="mc-accumLegend"></div>
+  <span id="mc-funnelTip" class="tooltip-wrap" style="position:absolute;top:1rem;right:1.25rem;z-index:10;">
+    <span class="tooltip-icon" style="opacity:0.35;">?</span>
+    <span id="mc-funnelNote" class="tooltip-box-up" style="width:300px;font-weight:normal;"></span>
+  </span>
+  <div class="chart-container"><canvas id="mc-accumChart"></canvas></div>
+</div>
+
+<div class="stats" id="mc-statsRow"></div>
+
+<div class="section-label">Poder de compra na aposentadoria — em R$ de hoje</div>
+<div id="mc-realWrap" style="margin-bottom:1rem;"></div>
+
+<hr class="phase-divider">
+<p class="phase-heading">Fase de Retirada</p>
+<p class="subtitle">quanto custa sua aposentadoria?</p>
+
+<div class="section-label">Parâmetros</div>
+<div class="controls-grid">
+  <div class="ctrl"><div class="ctrl-header"><label>Custo de vida mensal (R$ de hoje)</label><span class="ctrl-val" id="mc-lC" contenteditable="true" spellcheck="false">R$ 20.000</span></div><input type="range" id="mc-sC" min="1000" max="100000" step="1000" value="20000"></div>
+  <div class="ctrl"><div class="ctrl-header"><label>Prazo de retirada (anos)</label><span class="ctrl-val" id="mc-lD" contenteditable="true" spellcheck="false">30 anos</span></div><input type="range" id="mc-sD" min="5" max="60" step="1" value="30"></div>
+  <h4>Retorno na retirada</h4>
+  <div class="ctrl rate-ctrl"><div class="ctrl-header"><label>Retorno médio anual</label><span class="ctrl-val" id="mc-lRR" contenteditable="true" spellcheck="false" style="color:var(--green)">15%</span></div><input type="range" id="mc-sRR" min="1" max="20" step="0.5" value="15"></div>
+  <div class="ctrl vol-ctrl"><div class="ctrl-header"><label>Volatilidade (σ anual)</label><span class="ctrl-val" id="mc-lVR" contenteditable="true" spellcheck="false" style="color:var(--amber)">15%</span></div><input type="range" id="mc-sVR" min="1" max="30" step="0.5" value="15"></div>
+</div>
+
+<div class="verdict" id="mc-verdict"></div>
+
+<div class="section-label">Corredor de resultados — retirada</div>
+<div class="chart-wrap"><div class="legend" id="mc-retireLegend"></div><div class="chart-container"><canvas id="mc-retireChart"></canvas></div></div>
+
+<div class="stats" id="mc-retireStatsRow"></div>
+
+<div class="section-label">Probabilidade de sobrevivência ao longo da retirada</div>
+<div class="survival-wrap" id="mc-survivalWrap"></div>
+
+<div class="section-label">Risco de sequência de retornos</div>
+<div id="mc-seqWrap" style="margin-bottom:1rem;"></div>
+
+<div class="section-label">Precisão da simulação</div>
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+  <div style="display:flex;gap:6px;" id="mc-scenarioSelector">
+    <button class="scen-btn" data-n="200">Rápido <span style="opacity:0.5;font-size:0.7rem">200</span></button>
+    <button class="scen-btn active" data-n="1000">Padrão <span style="opacity:0.5;font-size:0.7rem">1.000</span></button>
+    <button class="scen-btn" data-n="5000">Preciso <span style="opacity:0.5;font-size:0.7rem">5.000</span></button>
+    <button class="scen-btn" data-n="30000">Ultra <span style="opacity:0.5;font-size:0.7rem">30.000</span></button>
+  </div>
+  <span id="mc-scenarioNote" style="font-family:'Courier New',monospace;font-size:0.73rem;color:var(--muted);">Uso normal — boa estabilidade nos percentis</span>
+</div>
+
+</div><!-- /panel-mc -->
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     SCRIPTS
+     ════════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){if(!window.ResizeObserver)return;var R=window.ResizeObserver;window.ResizeObserver=function(cb){var t;return new R(function(e,o){clearTimeout(t);t=setTimeout(function(){cb(e,o);},80);});};})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
+<script>
+'use strict';
+
+// ── Shared utilities ───────────────────────────────────────────────────────
+
+Chart.register({
+  id: 'crosshair',
+  afterDraw(chart) {
+    if (!chart._cx) return;
+    const ctx = chart.ctx, ys = chart.scales.y;
+    ctx.save(); ctx.beginPath();
+    ctx.moveTo(chart._cx, ys.top); ctx.lineTo(chart._cx, ys.bottom);
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    ctx.lineWidth = 1; ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)';
+    ctx.setLineDash([3,3]); ctx.stroke(); ctx.restore();
+  }
+});
+
+function wireCrosshair(canvas, getChart) {
+  canvas.addEventListener('mousemove', e => {
+    const ch = getChart(); if (!ch) return;
+    ch._cx = e.clientX - canvas.getBoundingClientRect().left; ch.update('none');
+  });
+  canvas.addEventListener('mouseleave', () => {
+    const ch = getChart(); if (!ch) return;
+    ch._cx = null; ch.update('none');
+  });
+}
+
+const _now = new Date();
+const CUR_YEAR = _now.getFullYear();
+const CUR_MON  = String(_now.getMonth()+1).padStart(2,'0');
+
+const fmtBR = v => 'R$\u00a0' + Math.round(v).toLocaleString('pt-BR');
+function fmtShort(v) {
+  if (!isFinite(v)) return v < 0 ? '-∞' : '∞';
+  const neg = v < 0;
+  const a = Math.abs(v);
+  let s;
+  if (a >= 1e9) s = 'R$\u00a0'+(a/1e9).toFixed(a>=100e9?0:a>=10e9?1:2).replace('.',',')+'\u00a0B';
+  else if (a >= 1e6) s = 'R$\u00a0'+(a/1e6).toFixed(a>=100e6?0:a>=10e6?1:2).replace('.',',')+'\u00a0M';
+  else if (a >= 1e3) s = 'R$\u00a0'+(a/1e3).toFixed(a>=100e3?0:a>=10e3?1:2).replace('.',',')+'\u00a0k';
+  else s = fmtBR(a);
+  return neg ? '−'+s : s;
+}
+// fmtDec: formats a number with N decimal places using pt-BR comma separator
+function fmtDec(v, n) { return v.toFixed(n).replace('.', ','); }
+// chartMuted: returns current muted color for chart axes (dark-mode aware)
+function chartMuted() { return getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#7a7870'; }
+function chartGrid()  { return document.documentElement.getAttribute('data-theme')==='dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'; }
+
+
+function parseRaw(text) {
+  const neg = text.trim().startsWith('-');
+  const val = parseFloat(text.replace(/[^\d.,]/g,'').replace(',','.')) || null;
+  return val !== null ? (neg ? -val : val) : null;
+}
+
+// Shared accumulation model — annual growth, monthly compounding
+function simAccum(P, M, rAnnual, years, growth) {
+  const rm = Math.pow(1 + rAnnual/100, 1/12) - 1;
+  let b = P;
+  const path = [P];
+  for (let y = 1; y <= years; y++) {
+    const mc = M * Math.pow(1 + growth/100, y-1);
+    for (let m = 0; m < 12; m++) b = b*(1+rm) + mc;
+    // Guard against Infinity from extreme rate inputs
+    if (!isFinite(b)) { for (let r = y; r <= years; r++) path.push(Number.MAX_SAFE_INTEGER); return path; }
+    path.push(b);
+  }
+  return path;
+}
+
+// Shared drawdown model — monthly withdrawal intercalated with monthly return
+function simDrawdown(P0, monthlyAtRetire, infl, rRetire, years) {
+  const rm = Math.pow(1 + rRetire/100, 1/12) - 1;
+  const gi = Math.pow(1 + infl/100, 1/12) - 1;
+  let b = P0, w = monthlyAtRetire;
+  const path = [P0];
+  for (let y = 1; y <= years; y++) {
+    for (let m = 0; m < 12; m++) { b = b*(1+rm) - w; w *= (1+gi); if (b<0) b=0; }
+    path.push(Math.max(0,b));
+    if (b<=0) { for (let r=y+1;r<=years;r++) path.push(0); break; }
+  }
+  return path;
+}
+
+// Editable label wiring — prefix-aware
+function wireEditable(cfg, onUpdate) {
+  const lbl = document.getElementById(cfg.lbl);
+  const sld = document.getElementById(cfg.sld);
+  if (!lbl || !sld) return;
+
+  sld.addEventListener('input', function() {
+    if (this._fc) return;
+    this.dataset.override = '';
+    if (!lbl.classList.contains('editing')) {
+      lbl.textContent = fmtCtrlVal(+this.value, cfg.type);
+      if (cfg.red) lbl.style.color = 'var(--red)';
+    }
+    onUpdate();
+  });
+
+  lbl.addEventListener('focus', () => {
+    lbl.classList.add('editing');
+    const val = +(sld.dataset.override || sld.value);
+    lbl.textContent = cfg.type === 'currency' ? Math.round(val) : val;
+    // Fix #12: getSelection throws on some iOS WebViews — catch silently
+    try {
+      const r = document.createRange(); r.selectNodeContents(lbl);
+      window.getSelection().removeAllRanges(); window.getSelection().addRange(r);
+    } catch(e) {}
+  });
+
+  lbl.addEventListener('blur', () => {
+    lbl.classList.remove('editing');
+    // Trim to prevent layout-breaking pastes
+    if (lbl.textContent.length > 16) lbl.textContent = lbl.textContent.slice(0, 16);
+    const raw = parseRaw(lbl.textContent);
+    if (raw !== null && isFinite(raw) && raw >= (cfg.min !== undefined ? cfg.min : 0)) {
+      sld.dataset.override = raw;
+      sld._fc = true;
+      sld.value = Math.min(Math.max(raw, +sld.min), +sld.max);
+      sld._fc = false;
+    }
+    if (cfg.red)   lbl.style.color = 'var(--red)';
+    if (cfg.green) lbl.style.color = 'var(--green)';
+    if (cfg.amber) lbl.style.color = 'var(--amber)';
+    if (cfg.growth) {
+      const inflEl = document.getElementById(cfg.inflRef);
+      const inflVal = inflEl ? (+(inflEl.dataset.override||inflEl.value)) : 5;
+      setGrowthColor(cfg.sld, cfg.lbl, +(sld.dataset.override||sld.value), inflVal);
+    }
+    onUpdate();
+  });
+
+  lbl.addEventListener('keydown', e => {
+    // Only intercept Enter/Escape — let the browser/mobile keyboard handle everything else.
+    // Validation happens on blur, which works reliably on all devices.
+    if (e.key === 'Enter') { e.preventDefault(); lbl.blur(); }
+    if (e.key === 'Escape') { lbl.classList.remove('editing'); lbl.blur(); }
+  });
+}
+
+function getV(id) {
+  const el = document.getElementById(id);
+  if (!el) return 0;
+  const ov = el.dataset.override;
+  return (ov !== undefined && ov !== '') ? +ov : +el.value;
+}
+
+function fmtCtrlVal(v, type) {
+  if (type === 'currency') return fmtBR(v);
+  if (type === 'pct')      return v + '%';
+  if (type === 'years')    return v + ' anos';
+  // Warn loudly in development if a new type is added without updating this function
+  console.warn('fmtCtrlVal: unknown type "' + type + '"');
+  return String(v);
+}
+
+function syncLabel(lblId, sldId, type, red, green, amber, growth, inflRef) {
+  const lbl = document.getElementById(lblId);
+  if (lbl && !lbl.classList.contains('editing')) {
+    lbl.textContent = fmtCtrlVal(getV(sldId), type);
+    if (red)   lbl.style.color = 'var(--red)';
+    if (green) lbl.style.color = 'var(--green)';
+    if (amber) lbl.style.color = 'var(--amber)';
+    if (growth && inflRef) {
+      const inflEl = document.getElementById(inflRef);
+      const inflVal = inflEl ? +(inflEl.dataset.override||inflEl.value) : 5;
+      setGrowthColor(sldId, lblId, getV(sldId), inflVal);
+    }
+  }
+}
+
+// Dynamic prazo thumb: interpolates from muted gray (short) → blue (long), theme-aware
+function setPrazoThumbColor(sliderId) {
+  const el = document.getElementById(sliderId);
+  if (!el) return;
+  const pct = (getV(sliderId) - +el.min) / (+el.max - +el.min);
+  // Use CSS variable colors so dark-mode is respected
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  // muted: #9a9890 (light) / #7a7870 (dark) → blue: #1a4a8a (light) / #4d8fd4 (dark)
+  const fromR = isDark ? 122 : 154, fromG = isDark ? 120 : 152, fromB = isDark ? 112 : 144;
+  const toR   = isDark ? 77  : 26,  toG   = isDark ? 143 : 74,  toB   = isDark ? 212 : 138;
+  const r = Math.round(fromR + (toR - fromR) * pct);
+  const g = Math.round(fromG + (toG - fromG) * pct);
+  const b = Math.round(fromB + (toB - fromB) * pct);
+  const styleId = 'prazo-style-'+sliderId;
+  let styleEl = document.getElementById(styleId);
+  if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = styleId; document.head.appendChild(styleEl); }
+  styleEl.textContent = `#${sliderId}::-webkit-slider-thumb { background: rgb(${r},${g},${b}) !important; }`;
+}
+
+// Dynamic growth-of-contributions color: compares against current inflation value
+// red = below inflation (losing real purchasing power), amber = equal, green = above
+function setGrowthColor(sliderId, lblId, growthVal, inflVal) {
+  const lbl = document.getElementById(lblId);
+  const styleId = 'growth-style-'+sliderId;
+  let styleEl = document.getElementById(styleId);
+  if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = styleId; document.head.appendChild(styleEl); }
+  let color, cssVar;
+  if (growthVal < inflVal - 0.01)       { color = 'var(--red)';   cssVar = 'var(--red)'; }
+  else if (growthVal > inflVal + 0.01)  { color = 'var(--green)'; cssVar = 'var(--green)'; }
+  else                                   { color = 'var(--amber)'; cssVar = 'var(--amber)'; }
+  styleEl.textContent = `#${sliderId}::-webkit-slider-thumb { background: ${cssVar} !important; }`;
+  if (lbl && !lbl.classList.contains('editing')) lbl.style.color = color;
+}
+
+function milestoneYears(Y) {
+  const base = [1,5,10,15,20,25,30,35,40,45,50];
+  const ms = base.filter(y => y<=Y);
+  if (Y%5!==0 && Y>1 && !ms.includes(Y)) ms.push(Y);
+  return ms;
+}
+
+// ── Theme toggle ───────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
+  document.getElementById('themeBtn').textContent = isDark ? '◑' : '◐';
+  // Re-sync prazo thumbs since their colors are theme-dependent (fix #6)
+  ['sim-sY','mc-sY'].forEach(setPrazoThumbColor);
+  try {
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // If toggling back to match OS preference, clear the override
+    if ((isDark && !prefersDark) || (!isDark && prefersDark)) {
+      localStorage.removeItem('theme');
+    } else {
+      localStorage.setItem('theme', isDark ? 'light' : 'dark');
+    }
+  } catch(e){}
+}
+// Restore theme preference on boot
+// Priority: 1) explicit user choice in localStorage, 2) OS preference
+(function(){
+  try {
+    const saved = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const useDark = saved === 'dark' || (saved === null && prefersDark);
+    if (useDark) {
+      document.documentElement.setAttribute('data-theme','dark');
+      document.getElementById('themeBtn').textContent='◐';
+    }
+    // Also respond to OS theme changes at runtime (e.g. auto-dark at sunset)
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+        if (localStorage.getItem('theme') === null) {
+          document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : '');
+          document.getElementById('themeBtn').textContent = e.matches ? '◐' : '◑';
+        }
+      });
+    }
+  } catch(e){}
+})();
+
+// ── CSV export ─────────────────────────────────────────────────────────────
+function downloadCSV(type) {
+  let headers, rows, filename;
+  const CY = CUR_YEAR, CM = CUR_MON;
+
+  if (type === 'acumulacao') {
+    const allRows = SimState.lastRows;
+    const P = SimState.lastP, Y = SimState.lastY;
+    const I = getV('sim-sI');
+    if (!allRows) return;
+    filename = 'acumulacao';
+    headers = ['Data','Ano','Saldo nominal','Saldo real','Erosão inflação','Erosão (%)','Ganho anual','Multiplicador','Aporte mensal'];
+    rows = allRows.map((r, y) => {
+      const date = y === 0 ? `${CM}/${CY}` : `${CM}/${CY+y}`;
+      const lost = r.balance - r.realBalance;
+      const lostPct = r.balance > 0 ? (lost/r.balance*100).toFixed(1).replace('.',',') : '0,0';
+      const mult = r.totalIn > 0 ? (r.balance/r.totalIn).toFixed(2).replace('.',',') : '—';
+      return [date, y, Math.round(r.balance), Math.round(r.realBalance),
+              Math.round(lost), lostPct+'%', Math.round(r.yearGain), mult+'×',
+              Math.round(r.monthlyContrib)];
+    });
+
+  } else if (type === 'retirada') {
+    const allRows = SimState.ddAllRows;
+    if (!allRows) return;
+    const AY = Math.round(SimState.accumYears || 0);
+    const retireStart = CY + AY;
+    filename = 'retirada';
+    headers = ['Data','Ano retirada','Saldo nominal','Saldo real','Retirada anual','Retirada mensal','Taxa de retirada (%)'];
+    rows = allRows.map((r, y) => {
+      const date = y === 0 ? `${CM}/${retireStart}` : `${CM}/${retireStart+y}`;
+      const prevBal = y > 0 ? allRows[y-1].balance : r.balance;
+      const wRate = r.balance > 0 && y > 0 && prevBal > 0
+        ? (r.withdrawal/prevBal*100).toFixed(2).replace('.',',') : '—';
+      return [date, y, Math.round(r.balance), Math.round(r.realBalance),
+              Math.round(r.withdrawal), Math.round(r.withdrawal/12), wRate];
+    });
+  }
+
+  if (!rows) return;
+  const escape = v => '"' + String(v).replace(/"/g,'""') + '"';
+  const csv = [headers.map(escape).join(';'),
+               ...rows.map(r => r.map(escape).join(';'))].join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `simulador_${filename}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ── Panel switching ────────────────────────────────────────────────────────
+function showPanel(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'mc' && !MCState.rendered) { setTimeout(mcUpdate, 0); MCState.rendered = true; }
+  if (id === 'qp' && !QPState.rendered) { setTimeout(qpUpdate, 0); QPState.rendered = true; }
+}
+
+// ── Projetar → Estressar bridge ────────────────────────────────────────────
+function sendToEstressar() {
+  const P = getV('sim-sP'), M = getV('sim-sM'), R = getV('sim-sR');
+  const G = getV('sim-sG'), Y = Math.round(getV('sim-sY')), I = getV('sim-sI');
+  const map = {'mc-sP':P,'mc-sM':M,'mc-sR':R,'mc-sG':G,'mc-sY':Y,'mc-sI':I};
+  Object.entries(map).forEach(([id,val])=>{
+    const el=document.getElementById(id); if(!el)return;
+    el.dataset.override=val; el._fc=true;
+    el.value=Math.min(Math.max(val,+el.min),+el.max); el._fc=false;
+  });
+  MC_CFG.forEach(cfg=>syncLabel(cfg.lbl,cfg.sld,cfg.type,cfg.red,cfg.green,cfg.amber,cfg.growth,cfg.inflRef));
+  // Navigate to Estressar
+  const mcBtn = document.getElementById('nav-mc-btn');
+  showPanel('mc', mcBtn);
+  if (!MCState.rendered) { MCState.rendered = true; }
+  setTimeout(mcUpdate, 0);
+}
+
+// ── localStorage persistence ───────────────────────────────────────────────
+// MC sliders are intentionally excluded — they always reset to calibrated defaults.
+const LS_KEY = 'simulador_state_v1';
+const MC_IDS = new Set([
+  'mc-sP','mc-sM','mc-sG','mc-sY','mc-sI','mc-sR','mc-sV',
+  'mc-sC','mc-sD','mc-sRR','mc-sVR',
+  'mc-sBullR','mc-sBullV','mc-sBullP','mc-sBearR','mc-sBearV','mc-sBearP'
+]);
+function saveState() {
+  try {
+    const state = {};
+    document.querySelectorAll('input[type=range]').forEach(el => {
+      if (MC_IDS.has(el.id)) return; // never persist MC sliders
+      const ov = el.dataset.override;
+      if (ov !== undefined && ov !== '') state[el.id] = ov;
+      else state[el.id] = el.value;
+    });
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch(e) {}
+}
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    Object.entries(state).forEach(([id, val]) => {
+      if (MC_IDS.has(id)) return; // ignore any previously saved MC values
+      const el = document.getElementById(id);
+      if (!el || el.type !== 'range') return;
+      el.dataset.override = val;
+      el._fc = true;
+      el.value = Math.min(Math.max(+val, +el.min), +el.max);
+      el._fc = false;
+    });
+  } catch(e) {}
+}
+window.addEventListener('beforeunload', saveState);
+
+// ── Smart tooltip positioning ─────────────────────────────────────────────
+// Uses fixed positioning to avoid clipping by any parent overflow/transform.
+// Detects viewport edges and flips horizontally as needed.
+(function() {
+  const TW = 270; // tooltip width
+  document.addEventListener('mouseover', e => {
+    const icon = e.target.closest('.tooltip-icon');
+    if (!icon) return;
+    const box = icon.parentElement.querySelector('.tooltip-box, .tooltip-box-up');
+    if (!box) return;
+    const isUp = box.classList.contains('tooltip-box-up');
+    const r = icon.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // Horizontal: center on icon, clamp to viewport
+    let left = r.left + r.width/2 - TW/2;
+    if (left + TW > vw - 8) left = vw - TW - 8;
+    if (left < 8) left = 8;
+    // Vertical: above or below icon
+    let top;
+    if (isUp) {
+      top = r.top - 8; // will be set via bottom via transform; use top - estimated height
+      box.style.top = 'auto';
+      box.style.bottom = (vh - r.top + 8) + 'px';
+    } else {
+      box.style.bottom = 'auto';
+      box.style.top = (r.bottom + 8) + 'px';
+    }
+    box.style.left = left + 'px';
+    box.style.display = 'block';
+  });
+  document.addEventListener('mouseout', e => {
+    const icon = e.target.closest('.tooltip-icon');
+    if (!icon) return;
+    const box = icon.parentElement.querySelector('.tooltip-box, .tooltip-box-up');
+    if (box) box.style.display = 'none';
+  });
+})();
+// rowsFn(dataPoints, dataIndex) → [{label, value, bold?, color?, separator?, sub?, raw?}]
+function makeExternalTooltip(canvasEl, rowsFn) {
+  // Reuse an existing tooltip bound to this canvas, or create one fresh.
+  // This prevents orphaned fixed-positioned divs from accumulating when charts
+  // are destroyed and recreated on panel/tab switches (bug fix #2).
+  let tip = canvasEl._tooltipEl;
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;opacity:0;transition:opacity 0.1s;background:#1a1916;color:#f7f6f2;border-radius:8px;padding:10px 13px;font-family:Courier New,monospace;font-size:0.72rem;line-height:1;white-space:nowrap;min-width:180px;';
+    document.body.appendChild(tip);
+    canvasEl._tooltipEl = tip;
+    canvasEl.addEventListener('mouseleave', () => { tip.style.opacity = '0'; });
+  }
+  return function(context) {
+    const { tooltip } = context;
+    if (tooltip.opacity === 0) { tip.style.opacity = '0'; return; }
+    const date = tooltip.title[0] || '';
+    const dataIndex = tooltip.dataPoints[0]?.dataIndex ?? 0;
+    const cells = rowsFn(tooltip.dataPoints, dataIndex).map(r =>
+      r.separator
+        ? `<tr><td colspan="3" style="padding:5px 0 4px;"><div style="border-top:1px solid rgba(255,255,255,0.15);"></div></td></tr>`
+        : `<tr>
+            <td style="padding:2px 6px 2px 0;vertical-align:middle;">${r.color ? `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${r.color};flex-shrink:0;"></span>` : ''}</td>
+            <td style="color:#9a9890;padding:2px 14px 2px 0;">${r.label}</td>
+            <td style="text-align:right;${r.bold?'font-weight:bold;color:#f7f6f2;':''}">
+              ${r.raw != null ? r.raw : fmtShort(r.value)}${r.sub?`<span style="color:#6a6860;font-size:0.65rem;margin-left:4px;">${r.sub}</span>`:''}
+            </td>
+           </tr>`
+    ).join('');
+    tip.innerHTML = `<div style="font-weight:bold;color:#f7f6f2;margin-bottom:8px;font-size:0.78rem;">${date}</div><table style="border-collapse:collapse;width:100%;">${cells}</table>`;
+    const rect   = canvasEl.getBoundingClientRect();
+    const tipW   = tip.offsetWidth || 220;
+    const tipH   = tip.offsetHeight || 100;
+    const vw     = window.innerWidth;
+    const vh     = window.innerHeight;
+    let left = rect.left + tooltip.caretX + 14;
+    if (left + tipW > vw - 8) left = rect.left + tooltip.caretX - tipW - 14;
+    let top  = rect.top + tooltip.caretY - 20;
+    if (top + tipH > vh - 8) top = vh - tipH - 8;
+    if (top < 4) top = 4;
+    tip.style.left = left + 'px';
+    tip.style.top  = top  + 'px';
+    tip.style.opacity = '1';
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SIMULADOR
+// ══════════════════════════════════════════════════════════════════════════
+const SimState = {
+  chart: null, compareChart: null, ddChart: null,
+  currentTab: 'stacked', ddTab: 'balance',
+  compareOpen: false, compareListenersWired: false,
+  chCrosshair: false, cmpCrosshair: false, ddCrosshair: false,
+  ddStartOverride: null, ddCostOverride: null,
+  // Simulation data (previously on window._sim*)
+  lastRows: null, lastP: 0, lastY: 0,
+  ddLastRows: null, ddAllRows: null,
+  accumFinal: 0, accumYears: 0
+};
+
+const SIM_CFG = [
+  { lbl:'sim-lP', sld:'sim-sP', type:'currency', min:0,   max:1e12 },
+  { lbl:'sim-lM', sld:'sim-sM', type:'currency', min:0,   max:1e9  },
+  { lbl:'sim-lR', sld:'sim-sR', type:'pct',      min:0.1, max:1000, green:true },
+  { lbl:'sim-lG', sld:'sim-sG', type:'pct',      min:0,   max:1000, growth:true, inflRef:'sim-sI' },
+  { lbl:'sim-lY', sld:'sim-sY', type:'years',    min:1,   max:200  },
+  { lbl:'sim-lI', sld:'sim-sI', type:'pct',      min:0,   max:100, red:true },
+];
+
+SIM_CFG.forEach(cfg => wireEditable(cfg, simUpdate));
+['sim-sP','sim-sM','sim-sR','sim-sG','sim-sY','sim-sI'].forEach(id => {
+  document.getElementById(id).addEventListener('input', function() {
+    if (this._fc) return; this.dataset.override = ''; if(id==='sim-sY')setPrazoThumbColor('sim-sY'); if(id==='sim-sG'||id==='sim-sI')setGrowthColor('sim-sG','sim-lG',getV('sim-sG'),getV('sim-sI')); simUpdate();
+  });
+});
+
+// NOTE (#5): simSimulate (below) and the shared simAccum function use the same
+// accumulation model (annual growth, monthly compounding). simSimulate returns
+// richer row objects needed for the milestone table and chart composition tabs.
+// Any change to the accumulation logic must be applied to BOTH functions.
+function simSimulate(P, M, rAnnual, Y, growth, inflation) {
+  const rm = Math.pow(1 + rAnnual/100, 1/12) - 1;
+  let balance = P, totalIn = P;
+  const rows = [{year:0,balance:P,totalIn:P,yearGain:0,monthlyContrib:M,realBalance:P,interestThisYear:0}];
+  let fiYear = null;
+  for (let y=1;y<=Y;y++) {
+    const mc = M * Math.pow(1+growth/100, y-1);
+    const annualContrib = mc*12, prev = balance;
+    for (let m=0;m<12;m++) balance = balance*(1+rm)+mc;
+    totalIn += annualContrib;
+    // Guard against Infinity from extreme rate inputs
+    if (!isFinite(balance)) { balance = Number.MAX_SAFE_INTEGER; }
+    const deflator = Math.pow(1+inflation/100, y);
+    const realBalance = balance/deflator;
+    const interestThisYear = (balance-prev)-annualContrib;
+    if (fiYear===null && interestThisYear>=annualContrib) fiYear=y;
+    rows.push({year:y,balance,totalIn,yearGain:balance-prev,monthlyContrib:mc,realBalance,interestThisYear});
+  }
+  rows.fiYear = fiYear; return rows;
+}
+
+function simSetTab(tab, el) {
+  SimState.currentTab = tab;
+  document.querySelectorAll('#panel-sim .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  simUpdateChart(SimState.lastRows, SimState.lastP, SimState.lastY);
+}
+
+function simUpdateChart(rows, P, Y) {
+  SimState.lastRows = rows; SimState.lastP = P; SimState.lastY = Y;
+  const tab = SimState.currentTab;
+  const step = Math.max(1, Math.floor(Y/40));
+  const sampled = rows.filter((_,i) => i%step===0||i===Y);
+  const labels = sampled.map(r => r.year===0?'Hoje':'Ano '+r.year);
+  let datasets, legendItems;
+  if (tab==='stacked') {
+    datasets = [
+      {label:'Aporte inicial', data:sampled.map(()=>Math.round(P)), backgroundColor:'#c8d8f0', stack:'s'},
+      {label:'Aportes mensais', data:sampled.map(r=>Math.round(Math.max(0,r.totalIn-P))), backgroundColor:'#5DCAA5', stack:'s'},
+      {label:'Juros acumulados', data:sampled.map(r=>Math.round(Math.max(0,r.balance-r.totalIn))), backgroundColor:'#1a7a52', stack:'s'}
+    ];
+    legendItems = [{color:'#c8d8f0',label:'Aporte inicial'},{color:'#5DCAA5',label:'Aportes mensais'},{color:'#1a7a52',label:'Juros acumulados'}];
+  } else if (tab==='nominal_vs_real') {
+    datasets = [
+      {label:'Saldo nominal', data:sampled.map(r=>Math.round(r.balance)), borderColor:'#1a4a8a', backgroundColor:'rgba(26,74,138,0.08)', fill:true, tension:0.3, type:'line', pointRadius:0},
+      {label:'Saldo real', data:sampled.map(r=>Math.round(r.realBalance)), borderColor:'#1a7a52', backgroundColor:'rgba(26,122,82,0.08)', fill:true, tension:0.3, type:'line', pointRadius:0}
+    ];
+    legendItems = [{color:'#1a4a8a',label:'Saldo nominal'},{color:'#1a7a52',label:'Saldo real (R$ de hoje)'}];
+  } else {
+    datasets = [{label:'Ganho anual', data:sampled.map(r=>Math.round(r.yearGain)), backgroundColor:sampled.map(r=>r.yearGain>0?'#1a7a52':'#b83232'), type:'bar'}];
+    legendItems = [{color:'#1a7a52',label:'Ganho anual (nominal)'}];
+  }
+  document.getElementById('sim-legendEl').innerHTML = legendItems.map(l=>`<div class="leg"><div class="leg-dot" style="background:${l.color}"></div>${l.label}</div>`).join('');
+  const isBar = tab==='stacked'||tab==='annual_gain';
+  if (SimState.chart) {
+    SimState.chart.data.labels = labels; SimState.chart.data.datasets = datasets;
+    SimState.chart.options.scales.y.stacked = tab==='stacked';
+    SimState.chart.options.scales.x.stacked = tab==='stacked';
+    SimState.chart.update('none');
+  } else {
+    const simChartCanvas = document.getElementById('sim-chart');
+    SimState.chart = new Chart(simChartCanvas, {
+      type: isBar?'bar':'line', data:{labels,datasets},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{display:false},tooltip:{enabled:false,external:makeExternalTooltip(simChartCanvas, pts=>{
+          const v={}; pts.forEach(p=>{v[p.dataset.label]=p.raw;});
+          const liveSets = SimState.chart ? SimState.chart.data.datasets : datasets;
+          return liveSets.map(d=>({label:d.label, value:v[d.label]??0, bold:d.label==='Juros acumulados', color:d.borderColor||d.backgroundColor}));
+        })}},
+        scales:{x:{stacked:tab==='stacked',ticks:{autoSkip:true,maxTicksLimit:10,color:chartMuted(),font:{family:'Courier New',size:10}},grid:{display:false}},
+                y:{stacked:tab==='stacked',ticks:{color:chartMuted(),callback:v=>fmtShort(v),font:{family:'Courier New',size:10}},grid:{color:chartGrid()}}}}
+    });
+    if (!SimState.chCrosshair) { wireCrosshair(simChartCanvas,()=>SimState.chart); SimState.chCrosshair=true; }
+  }
+}
+
+function simUpdate() {
+  const P=getV('sim-sP'), M=getV('sim-sM'), R=getV('sim-sR'), G=getV('sim-sG');
+  const Y=Math.round(getV('sim-sY')), I=getV('sim-sI');
+  const retireYear=CUR_YEAR+Y, retireLabel=CUR_MON+'/'+retireYear;
+  SIM_CFG.forEach(cfg => syncLabel(cfg.lbl, cfg.sld, cfg.type, cfg.red, cfg.green, cfg.amber, cfg.growth, cfg.inflRef));
+  setPrazoThumbColor('sim-sY');
+
+  // Fix #10: warn early when there's nothing to simulate
+  const zeroBanner = document.getElementById('sim-zeroBanner');
+  if (P === 0 && M === 0) {
+    if (zeroBanner) zeroBanner.style.display = 'block';
+  } else {
+    if (zeroBanner) zeroBanner.style.display = 'none';
+  }
+
+  const rows = simSimulate(P,M,R,Y,G,I);
+  const final = rows[Y], fiYear = rows.fiYear;
+  const realRate = ((1+R/100)/(1+I/100)-1)*100;
+  const pLost = final.balance-final.realBalance;
+  const pLostPct = final.balance>0?(pLost/final.balance*100).toFixed(1).replace('.', ','):'0,0';
+
+  document.getElementById('sim-statsRow').innerHTML = [
+    {lbl:'Saldo final', val:fmtShort(final.balance), sub:fmtBR(final.balance), cls:''},
+    {lbl:'Saldo real', val:fmtShort(final.realBalance), sub:'em valores de hoje', cls:''},
+    {lbl:'Retorno real', val:realRate.toFixed(1).replace('.', ',')+'%', sub:R+'% nominal → '+realRate.toFixed(1).replace('.', ',')+'% real', cls:realRate>0?'green':'red'},
+    (()=>{
+      if (Y<1||!rows[Y]||!rows[Y-1]) return {lbl:'Ganho no último ano',val:'—',sub:'—',cls:''};
+      const lastRG=rows[Y].realBalance-rows[Y-1].realBalance;
+      let cumR=0,eq=0;
+      for (let ey=1;ey<Y;ey++){cumR+=rows[ey].realBalance-rows[ey-1].realBalance;if(cumR>=lastRG){eq=ey;break;}}
+      return {lbl:'Ganho no último ano',val:fmtShort(lastRG)+'<span style="font-size:0.6rem;font-weight:400;color:var(--muted);margin-left:4px;font-family:Courier New,monospace;">(R$ de hoje)</span>',sub:eq<=1?'= 1º ano':'= primeiros '+eq+' anos',cls:lastRG>0?'green':'red'};
+    })()
+  ].map(s=>`<div class="stat ${s.cls}"><div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div></div>`).join('');
+
+  document.getElementById('sim-nominalVal').textContent=fmtShort(final.balance);
+  document.getElementById('sim-nominalSub').textContent=fmtBR(final.balance)+' — dinheiro de '+retireLabel;
+  document.getElementById('sim-realVal').textContent=fmtShort(final.realBalance);
+  document.getElementById('sim-realSub').textContent=fmtBR(final.realBalance)+' em R$ de '+CUR_MON+'/'+CUR_YEAR;
+  document.getElementById('sim-inflText').textContent=`Com inflação de ${I}% ao ano, os preços serão ${Math.pow(1+I/100,Y).toFixed(1).replace('.', ',')}× mais altos em ${Y} anos (${retireLabel}) — ou seja, seu saldo nominal de R$${Math.round(final.balance).toLocaleString('pt-BR')} terá o mesmo poder de compra de R$${Math.round(final.realBalance).toLocaleString('pt-BR')} hoje. Isso representa ${pLostPct}% do saldo nominal corroído pela inflação.`;
+
+  const fiBanner=document.getElementById('sim-fiBanner');
+  if (fiYear!==null&&fiYear<=Y) {
+    fiBanner.style.display='block';
+    fiBanner.innerHTML=`<strong>Ponto de inflexão no ano ${fiYear} (${CUR_MON}/${CUR_YEAR+fiYear})</strong> — a partir daqui, os juros anuais superam seus aportes. O patrimônio passa a crescer mais pelo retorno do que pelo seu esforço. Saldo nesse ponto: <strong>${rows[fiYear]?fmtShort(rows[fiYear].balance):''}</strong>. `;
+  } else fiBanner.style.display='none';
+
+  SimState.accumFinal=final.balance; SimState.accumYears=Y;
+  simUpdateDrawdown(final.balance,Y);
+  simUpdateChart(rows,P,Y);
+  if (SimState.compareOpen) simUpdateCompare();
+
+  const ms=milestoneYears(Y).filter(y=>y<=Y&&rows[y]);
+  document.getElementById('sim-tbody').innerHTML=ms.map(y=>{
+    const d=rows[y],lost=d.balance-d.realBalance,lostPct=d.balance>0?(lost/d.balance*100).toFixed(0).replace('.', ','):0;
+    return `<tr><td style="color:var(--muted)">${CUR_MON+'/'+(CUR_YEAR+y)} <span style="opacity:0.5">(+${y})</span></td><td><strong>${fmtShort(d.balance)}</strong></td><td class="g">${fmtShort(d.realBalance)}</td><td class="r">−${fmtShort(lost)} <span style="opacity:0.6">(${lostPct}%)</span></td><td class="g">${fmtShort(d.yearGain)}</td><td style="color:var(--muted)">${d.totalIn>0?(d.balance/d.totalIn).toFixed(1).replace('.', ',')+'×':'—'}</td><td>${fmtBR(d.monthlyContrib)}/mês</td></tr>`;
+  }).join('');
+  // Fix #9: persist state after every update, not only on beforeunload,
+  // so a browser crash doesn't wipe the session's work.
+  saveState();
+}
+
+// Drawdown
+function simSimulateDrawdown(S, monthlyCostToday, accumYears, rAnnual, inflation, Y) {
+  const rm=Math.pow(1+rAnnual/100,1/12)-1, gi=Math.pow(1+inflation/100,1/12)-1;
+  const monthlyAtRetire=monthlyCostToday*Math.pow(1+inflation/100,accumYears);
+  let balance=S, w=monthlyAtRetire;
+  const defl0=Math.pow(1+inflation/100,accumYears);
+  const rows=[{year:0,balance:S,realBalance:S/defl0,withdrawal:0,interest:0}];
+  let depletedAt=null;
+  for (let y=1;y<=Y;y++) {
+    let yi=0, yw=0;
+    for (let m=0;m<12;m++) {
+      if (balance<=0) break;                      // FIX #2: stop once depleted
+      const int=balance*rm;
+      yi+=int;
+      const tentative=balance+int-w;
+      if (tentative<=0) {
+        yw+=balance+int;                          // only withdraw what's left
+        balance=0;
+        w*=(1+gi);
+        break;
+      }
+      balance=tentative; yw+=w; w*=(1+gi);
+    }
+    if (balance<=0&&depletedAt===null) depletedAt=y;
+    const defl=Math.pow(1+inflation/100,accumYears+y);
+    rows.push({year:y,balance:Math.max(0,balance),realBalance:Math.max(0,balance)/defl,
+               withdrawal:depletedAt!==null&&depletedAt<y?0:yw,
+               interest:depletedAt!==null&&depletedAt<y?0:yi});
+    if (balance<=0){for(let r=y+1;r<=Y;r++)rows.push({year:r,balance:0,realBalance:0,withdrawal:0,interest:0});break;}
+  }
+  return {rows,depletedAt,costAtRetirement:monthlyAtRetire*12};
+}
+
+function simSetDdTab(tab, el) {
+  SimState.ddTab=tab;
+  document.getElementById('sim-ddTabRow').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); simRenderDdChart(SimState.ddLastRows);
+}
+
+function simRenderDdChart(rows) {
+  SimState.ddLastRows=rows;
+  SimState.ddAllRows=rows; // full year-by-year data for CSV export
+  const step=Math.max(1,Math.floor(rows.length/40));
+  const sampled=rows.filter((_,i)=>i%step===0||i===rows.length-1);
+  const labels=sampled.map(r=>r.year===0?'Hoje':'Ano '+r.year);
+  let datasets,legendItems;
+  if (SimState.ddTab==='balance') {
+    datasets=[{label:'Saldo',data:sampled.map(r=>Math.round(r.balance)),backgroundColor:sampled.map(r=>r.balance<=0?'#f09595':'#c8d8f0'),type:'bar'}];
+    legendItems=[{color:'#c8d8f0',label:'Saldo nominal'},{color:'#f09595',label:'Esgotado'}];
+  } else if (SimState.ddTab==='nominal_vs_real') {
+    datasets=[
+      {label:'Saldo nominal',data:sampled.map(r=>Math.round(r.balance)),borderColor:'#1a4a8a',backgroundColor:'rgba(26,74,138,0.08)',fill:true,tension:0.3,type:'line',pointRadius:0},
+      {label:'Saldo real',data:sampled.map(r=>Math.round(r.realBalance)),borderColor:'#1a7a52',backgroundColor:'rgba(26,122,82,0.08)',fill:true,tension:0.3,type:'line',pointRadius:0}
+    ];
+    legendItems=[{color:'#1a4a8a',label:'Saldo nominal'},{color:'#1a7a52',label:'Saldo real'}];
+  } else {
+    datasets=[
+      {label:'Retirada',data:sampled.map(r=>Math.round(r.withdrawal)),backgroundColor:'#f09595',type:'bar'},
+      {label:'Retorno',data:sampled.map(r=>Math.round(r.interest)),backgroundColor:'#5DCAA5',type:'bar'}
+    ];
+    legendItems=[{color:'#f09595',label:'Retirada anual'},{color:'#5DCAA5',label:'Retorno anual'}];
+  }
+  document.getElementById('sim-ddLegendEl').innerHTML=legendItems.map(l=>`<div class="leg"><div class="leg-dot" style="background:${l.color}"></div>${l.label}</div>`).join('');
+  if (SimState.ddChart) {
+    SimState.ddChart.data.labels=labels; SimState.ddChart.data.datasets=datasets; SimState.ddChart.update('none');
+  } else {
+    const ddCanvasEl = document.getElementById('sim-ddChart');
+    SimState.ddChart=new Chart(ddCanvasEl,{type:'bar',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{enabled:false,external:makeExternalTooltip(ddCanvasEl, pts=>{
+      const v={}; pts.forEach(p=>{v[p.dataset.label]=p.raw;});
+      const liveSets = SimState.ddChart ? SimState.ddChart.data.datasets : datasets;
+      return liveSets.map(d=>({label:d.label, value:v[d.label]??0, color:d.borderColor||d.backgroundColor}));
+    })}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:10,color:chartMuted(),font:{family:'Courier New',size:10}},grid:{display:false}},y:{ticks:{color:chartMuted(),callback:v=>fmtShort(v),font:{family:'Courier New',size:10}},grid:{color:chartGrid()}}}}});
+    if (!SimState.ddCrosshair){wireCrosshair(ddCanvasEl,()=>SimState.ddChart);SimState.ddCrosshair=true;}
+  }
+}
+
+function simUpdateDrawdown(startingBalance, accumYears) {
+  const retireStartYear=SimState.ddStartOverride!==null?CUR_YEAR:CUR_YEAR+Math.round(SimState.accumYears||0);
+  const S=SimState.ddStartOverride!==null?SimState.ddStartOverride:startingBalance;
+  const C=SimState.ddCostOverride!==null?SimState.ddCostOverride:getV('sim-dsC');
+  const R=getV('sim-dsR'), I=getV('sim-dsI'), Y=Math.round(getV('sim-dsY'));
+  const AY=Math.round(accumYears||0);
+
+  const sSlider=document.getElementById('sim-dsS');
+  sSlider._fc=true; sSlider.value=Math.min(Math.max(S,+sSlider.min),+sSlider.max); sSlider._fc=false;
+  const cSlider=document.getElementById('sim-dsC');
+  cSlider._fc=true; cSlider.value=Math.min(Math.max(C,+cSlider.min),+cSlider.max); cSlider._fc=false;
+
+  const resyncBtn=document.getElementById('sim-ddResyncBtn'), syncNote=document.getElementById('sim-dsSyncNote');
+  if (SimState.ddStartOverride!==null){resyncBtn.style.display='inline-block';syncNote.style.color='var(--accent)';syncNote.textContent='substituindo resultado da acumulação ·';}
+  else{resyncBtn.style.display='none';syncNote.style.color='var(--muted)';syncNote.textContent='sincronizado automaticamente · edite para substituir';}
+
+  const lS=document.getElementById('sim-dlS'); if(!lS.classList.contains('editing'))lS.textContent=fmtBR(S);
+  const lC=document.getElementById('sim-dlC'); if(!lC.classList.contains('editing')){lC.textContent=fmtBR(C);}
+  const dlRel=document.getElementById('sim-dlR'); dlRel.textContent=R+'%'; dlRel.style.color='var(--green)';
+  const dlIel=document.getElementById('sim-dlI'); dlIel.textContent=I+'%'; dlIel.style.color='var(--red)';
+  document.getElementById('sim-dlY').textContent=Y+' anos';
+
+  const {rows,depletedAt,costAtRetirement}=simSimulateDrawdown(S,C,SimState.ddStartOverride!==null?0:AY,R,I,Y);
+  const final=rows[rows.length-1];
+  const totalWithdrawn=rows.reduce((s,r)=>s+r.withdrawal,0);
+  const realRate=((1+R/100)/(1+I/100)-1)*100;
+  // Fix 14: warn when real return is ≤ 0 — patrimônio diminui mesmo sem saques
+  const ddWarnEl=document.getElementById('sim-ddRealWarn');
+  if(ddWarnEl){
+    if(realRate<=0){
+      ddWarnEl.style.display='block';
+      ddWarnEl.textContent=`⚠ Taxa real negativa (${realRate.toFixed(1).replace('.',',')}% a.a.): a rentabilidade de ${R}% não cobre a inflação de ${I}%. O patrimônio perde poder de compra mesmo sem retiradas.`;
+    } else { ddWarnEl.style.display='none'; }
+  }
+  const impliedRate=S>0?(costAtRetirement/S*100):0;
+  const survived=depletedAt===null;
+  if(!lC.classList.contains('editing')) lC.style.color=survived?'var(--green)':'var(--red)';
+
+  const effectiveAY = SimState.ddStartOverride!==null ? 0 : AY;
+  const vEl=document.getElementById('sim-ddVerdict');
+  vEl.style.cssText=survived?'border-radius:10px;padding:14px 18px;margin-bottom:1.5rem;font-family:Courier New,monospace;font-size:0.82rem;line-height:1.6;background:var(--green-light);border:1px solid var(--green);color:var(--green)':'border-radius:10px;padding:14px 18px;margin-bottom:1.5rem;font-family:Courier New,monospace;font-size:0.82rem;line-height:1.6;background:var(--red-light);border:1px solid var(--red);color:var(--red)';
+  vEl.innerHTML=survived
+    ?(effectiveAY>0
+      ?`&#10003; Patrimônio dura os ${Y} anos (até ${CUR_MON}/${retireStartYear+Y}). Custo de vida de ${fmtBR(C)}/mês hoje → ${fmtBR(costAtRetirement/12)}/mês na aposentadoria (${CUR_MON}/${retireStartYear}, após ${effectiveAY} anos de inflação de ${I}%). <strong>Taxa de retirada: ${impliedRate.toFixed(2).replace('.', ',')}%</strong> no 1º ano. Saldo final: ${fmtShort(final.balance)}.`
+      :`&#10003; Patrimônio dura os ${Y} anos (até ${CUR_MON}/${retireStartYear+Y}). Custo de vida de ${fmtBR(C)}/mês (R$ de hoje), equivalente a ${fmtBR(costAtRetirement/12)}/mês no início da retirada. <strong>Taxa de retirada: ${impliedRate.toFixed(2).replace('.', ',')}%</strong> no 1º ano. Saldo final: ${fmtShort(final.balance)}.`)
+    :(effectiveAY>0
+      ?`&#9888; Patrimônio esgotado em ${CUR_MON}/${retireStartYear+depletedAt} (ano ${depletedAt}). Custo de vida de ${fmtBR(C)}/mês hoje → ${fmtBR(costAtRetirement/12)}/mês na aposentadoria, exigindo <strong>taxa de retirada de ${impliedRate.toFixed(2).replace('.', ',')}%</strong> — alta demais para ${R}% de retorno. Tente reduzir o custo de vida, aumentar a rentabilidade ou estender o prazo de acumulação.`
+      :`&#9888; Patrimônio esgotado em ${CUR_MON}/${retireStartYear+depletedAt} (ano ${depletedAt}). Custo de vida de ${fmtBR(C)}/mês exige <strong>taxa de retirada de ${impliedRate.toFixed(2).replace('.', ',')}%</strong> — alta demais para ${R}% de retorno. Tente reduzir o custo de vida ou aumentar a rentabilidade.`);
+
+  document.getElementById('sim-ddStatsRow').innerHTML=[
+    {lbl:'Saldo final',val:fmtShort(final.balance),sub:fmtBR(final.balance),cls:survived?'':'red'},
+    {lbl:'Total retirado',val:fmtShort(totalWithdrawn),sub:'em '+Y+' anos',cls:''},
+    {lbl:'Taxa de retirada',val:impliedRate.toFixed(2).replace('.', ',')+'%',sub:'ano 1 da aposentadoria',cls:impliedRate<4?'green':impliedRate<6?'':'red'},
+    {lbl:survived?'Patrimônio dura o prazo':'Esgotado no ano',val:survived?'&#10003; Sim':'Ano '+depletedAt,sub:survived?'dura mais que o prazo':'patrimônio chega a zero',cls:survived?'green':'red'}
+  ].map(s=>`<div class="stat ${s.cls}"><div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div></div>`).join('');
+
+  // Suggestion D: "quanto tempo dura?" — inverse drawdown question
+  const durationEl = document.getElementById('sim-ddDurationNote');
+  if (durationEl) {
+    if (survived) {
+      // Patrimony outlasts the period — find when it would actually end with longer horizon
+      const longRows = simSimulateDrawdown(S, C, effectiveAY, R, I, 200);
+      const depLong = longRows.depletedAt;
+      const color = depLong === null ? 'var(--green)' : depLong > Y * 1.5 ? 'var(--green)' : 'var(--amber)';
+      durationEl.innerHTML = depLong === null
+        ? `<span style="color:var(--green)">✓ Com esses parâmetros, o patrimônio nunca se esgota — os juros cobrem as retiradas indefinidamente.</span>`
+        : `Com esses parâmetros, o patrimônio <strong style="color:${color}">duraria ~${depLong} anos</strong> no total — ${depLong - Y} anos além do prazo configurado (${CUR_MON}/${retireStartYear + depLong}).`;
+    } else {
+      durationEl.innerHTML = '';
+    }
+  }
+
+  document.getElementById('sim-ddNominalVal').textContent=fmtShort(final.balance);
+  document.getElementById('sim-ddNominalSub').textContent=fmtBR(final.balance)+' — dinheiro de '+CUR_MON+'/'+(retireStartYear+Y);
+  document.getElementById('sim-ddRealVal').textContent=fmtShort(final.realBalance);
+  document.getElementById('sim-ddRealSub').textContent=fmtBR(final.realBalance)+' em R$ de '+CUR_MON+'/'+CUR_YEAR;
+  const lastW=rows.filter(r=>r.withdrawal>0).slice(-1)[0]?.withdrawal||0;
+  document.getElementById('sim-ddInflText').textContent=`Custo hoje: ${fmtBR(C)}/mês. Na aposentadoria (${CUR_MON}/${retireStartYear}${effectiveAY>0?', '+effectiveAY+' anos, '+I+'% inflação':''}): ${fmtBR(costAtRetirement/12)}/mês. Em ${CUR_MON}/${retireStartYear+Y}: ${fmtBR(lastW/12)}/mês. Rentabilidade real: ${realRate.toFixed(2).replace('.', ',')}% a.a.`;
+
+  const ms=milestoneYears(Y).filter(y=>y<rows.length);
+  document.getElementById('sim-ddTbody').innerHTML=ms.map(y=>{
+    const d=rows[y],dep=d.balance<=0&&y>0;
+    const wRate=d.balance>0&&y>0&&rows[y-1].balance>0?(d.withdrawal/rows[y-1].balance*100).toFixed(1).replace('.', ',')+'%':'—';
+    return `<tr${dep?' style="opacity:0.45"':''}><td style="color:var(--muted)">${CUR_MON+'/'+(retireStartYear+y)} <span style="opacity:0.5">(+${y})</span></td><td${dep?' class="r"':''}><strong>${dep?'&#8212;':fmtShort(d.balance)}</strong></td><td class="g">${dep?'&#8212;':fmtShort(d.realBalance)}</td><td class="r">${y===0?'&#8212;':fmtShort(d.withdrawal)}</td><td style="color:var(--muted)">${y===0?'&#8212;':fmtBR(d.withdrawal/12)}</td><td style="color:var(--muted)">${wRate}</td></tr>`;
+  }).join('');
+  simRenderDdChart(rows);
+}
+
+// Fix #8: use null-coalescing so a genuine R$0 accumulation isn't replaced by 1,000,000.
+// SimState.accumFinal is initialised to 0; it becomes non-null after the first simUpdate run.
+function _ddAccumFinal() { return SimState.accumFinal ?? 0; }
+function _ddAccumYears() { return SimState.accumYears ?? 0; }
+
+function simDdResync(){SimState.ddStartOverride=null;document.getElementById('sim-dsS').dataset.override='';simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears());}
+
+['sim-dsR','sim-dsI','sim-dsY'].forEach(id=>{document.getElementById(id).addEventListener('input',function(){if(this._fc)return;this.dataset.override='';simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears());});});
+document.getElementById('sim-dsS').addEventListener('input',function(){if(this._fc)return;SimState.ddStartOverride=+this.value;simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears());});
+document.getElementById('sim-dsC').addEventListener('input',function(){if(this._fc)return;SimState.ddCostOverride=+this.value;simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears());});
+
+// Wire drawdown editable labels using the shared wireEditable pattern
+// dlS: overrides starting balance; dlC: overrides cost of living
+wireEditable({lbl:'sim-dlS',sld:'sim-dsS',type:'currency',min:0,max:1e12},
+  ()=>{ SimState.ddStartOverride=getV('sim-dsS'); simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears()); });
+document.getElementById('sim-dlS').addEventListener('blur',()=>{ SimState.ddStartOverride=getV('sim-dsS'); });
+
+wireEditable({lbl:'sim-dlC',sld:'sim-dsC',type:'currency',min:0,max:1e9,red:true},
+  ()=>{ SimState.ddCostOverride=getV('sim-dsC'); simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears()); });
+document.getElementById('sim-dlC').addEventListener('blur',()=>{ SimState.ddCostOverride=getV('sim-dsC'); });
+
+// Compare
+function simToggleCompare(){
+  SimState.compareOpen=!SimState.compareOpen;
+  const panel=document.getElementById('sim-comparePanel'),btn=document.getElementById('sim-compareToggleBtn');
+  panel.style.display=SimState.compareOpen?'block':'none';
+  if(!SimState.compareOpen&&SimState.compareChart){SimState.compareChart.destroy();SimState.compareChart=null;SimState.cmpCrosshair=false;}
+  btn.textContent=SimState.compareOpen?'− Fechar comparação':'＋ Comparar cenário alternativo';
+  btn.style.color=SimState.compareOpen?'var(--accent)':'var(--muted)';
+  btn.style.borderColor=SimState.compareOpen?'var(--accent)':'var(--border)';
+  if(SimState.compareOpen){simWireCompareListeners();simUpdateCompare();}
+}
+
+function simUpdateCompare(){
+  if(!SimState.compareOpen)return;
+  const P2=getV('sim-c2sP'),M2=getV('sim-c2sM'),R2=getV('sim-c2sR'),G2=getV('sim-c2sG');
+  const Y=Math.round(getV('sim-sY')),I=getV('sim-sI');
+  document.getElementById('sim-c2lP').textContent=fmtBR(P2);
+  document.getElementById('sim-c2lM').textContent=fmtBR(M2);
+  document.getElementById('sim-c2lR').textContent=R2+'%';
+  document.getElementById('sim-c2lG').textContent=G2+'%';
+  const rows1=SimState.lastRows, rows2=simSimulate(P2,M2,R2,Y,G2,I);
+  const step=Math.max(1,Math.floor(Y/40));
+  const s1=rows1?rows1.filter((_,i)=>i%step===0||i===Y):[];
+  const s2=rows2.filter((_,i)=>i%step===0||i===Y);
+  const labels=s2.map(r=>r.year===0?'Hoje':'Ano '+r.year);
+  const datasets=[
+    {label:'Principal',data:s1.map(r=>Math.round(r.balance)),borderColor:'#1a4a8a',backgroundColor:'rgba(26,74,138,0.08)',fill:true,tension:0.3,type:'line',pointRadius:0},
+    {label:'Alternativo',data:s2.map(r=>Math.round(r.balance)),borderColor:'#e05c2a',backgroundColor:'rgba(224,92,42,0.08)',fill:true,tension:0.3,type:'line',pointRadius:0}
+  ];
+  if(SimState.compareChart){SimState.compareChart.data.labels=labels;SimState.compareChart.data.datasets=datasets;SimState.compareChart.update('none');}
+  else{
+    const cmpCanvas=document.getElementById('sim-compareChart');
+    SimState.compareChart=new Chart(cmpCanvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{enabled:false,external:makeExternalTooltip(cmpCanvas, pts=>{
+      const v={}; pts.forEach(p=>{v[p.dataset.label]=p.raw;});
+      return [{label:'Principal',value:v['Principal'],color:'#1a4a8a'},{label:'Alternativo',value:v['Alternativo'],bold:true,color:'#e05c2a'}];
+    })}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:10,color:chartMuted(),font:{family:'Courier New',size:10}},grid:{display:false}},y:{ticks:{color:chartMuted(),callback:v=>fmtShort(v),font:{family:'Courier New',size:10}},grid:{color:chartGrid()}}}}});
+    if(!SimState.cmpCrosshair){wireCrosshair(cmpCanvas,()=>SimState.compareChart);SimState.cmpCrosshair=true;}
+  }
+  const f1=rows1?rows1[Y]:null,f2=rows2[Y];
+  if(f1&&f2){const diff=f2.balance-f1.balance,diffPct=((diff/f1.balance)*100).toFixed(1).replace('.', ','),sign=diff>=0?'+':'';
+    document.getElementById('sim-compareStats').innerHTML=[{lbl:'Principal',val:fmtShort(f1.balance),sub:fmtBR(f1.balance),cls:''},{lbl:'Alternativo',val:fmtShort(f2.balance),sub:fmtBR(f2.balance),cls:''},{lbl:'Diferença',val:sign+fmtShort(diff),sub:sign+diffPct+'%',cls:diff>=0?'green':'red'},{lbl:'Alternativo (real)',val:fmtShort(f2.realBalance),sub:'em valores de hoje',cls:'green'}].map(s=>`<div class="stat ${s.cls}"><div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div></div>`).join('');}
+}
+
+function simWireCompareListeners(){
+  if(SimState.compareListenersWired)return; SimState.compareListenersWired=true;
+  ['sim-c2sP','sim-c2sM','sim-c2sR','sim-c2sG'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.addEventListener('input',function(){if(this._fc)return;this.dataset.override='';simUpdateCompare();});});
+  [{lbl:'sim-c2lP',sld:'sim-c2sP',type:'currency',min:0,max:1e12},{lbl:'sim-c2lM',sld:'sim-c2sM',type:'currency',min:0,max:1e9}].forEach(cfg=>wireEditable(cfg,simUpdateCompare));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MONTE CARLO
+// ══════════════════════════════════════════════════════════════════════════
+const MCState = { accumChartInst:null, retireChartInst:null, seqChartA:null, seqChartB:null, N:1000, rendered:false, regimeOpen:false, fatTails:false };
+
+const SCEN_NOTES={'200':'Exploração rápida — percentis menos estáveis','1000':'Uso normal — boa estabilidade nos percentis','5000':'Análise detalhada — pode demorar alguns segundos','30000':'Ultra — percentis com máxima estabilidade (~3s)'};
+
+// Dynamic color for regime return labels: green if positive, red if negative
+function setRegimeReturnColor(lblId, sldId) {
+  const lbl = document.getElementById(lblId);
+  const val = getV(sldId);
+  if (lbl && !lbl.classList.contains('editing'))
+    lbl.style.color = val >= 0 ? 'var(--green)' : 'var(--red)';
+  // Also update thumb color
+  const styleId = 'regime-ret-style-'+sldId;
+  let styleEl = document.getElementById(styleId);
+  if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = styleId; document.head.appendChild(styleEl); }
+  styleEl.textContent = `#${sldId}::-webkit-slider-thumb { background: ${val >= 0 ? 'var(--green)' : 'var(--red)'} !important; }`;
+}
+
+// ── Debounced MC update ─────────────────────────────────────────────────────
+let _mcDebounceTimer = null;
+function mcUpdateDebounced() {
+  if (!MCState.rendered) return;
+  if (MCState.N <= 200) { mcUpdate(); return; }
+  clearTimeout(_mcDebounceTimer);
+  _mcDebounceTimer = setTimeout(mcUpdate, MCState.N >= 30000 ? 1000 : MCState.N >= 5000 ? 400 : 200);
+}
+document.getElementById('mc-scenarioSelector').addEventListener('click',e=>{
+  const btn=e.target.closest('.scen-btn');if(!btn)return;
+  document.querySelectorAll('#mc-scenarioSelector .scen-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); MCState.N=+btn.dataset.n;
+  document.getElementById('mc-scenarioNote').textContent=SCEN_NOTES[MCState.N]; mcUpdate();
+});
+
+const MC_CFG=[
+  {lbl:'mc-lP',sld:'mc-sP',type:'currency',min:0,max:1e12},{lbl:'mc-lM',sld:'mc-sM',type:'currency',min:0,max:1e9},
+  {lbl:'mc-lG',sld:'mc-sG',type:'pct',min:0,max:1000,growth:true,inflRef:'mc-sI'},{lbl:'mc-lY',sld:'mc-sY',type:'years',min:1,max:200},
+  {lbl:'mc-lI',sld:'mc-sI',type:'pct',min:0,max:100,red:true},
+  {lbl:'mc-lR',sld:'mc-sR',type:'pct',min:0.1,max:1000,green:true},{lbl:'mc-lV',sld:'mc-sV',type:'pct',min:0.1,max:1000,amber:true},
+  {lbl:'mc-lC',sld:'mc-sC',type:'currency',min:0,max:1e9},{lbl:'mc-lD',sld:'mc-sD',type:'years',min:1,max:200},
+  {lbl:'mc-lRR',sld:'mc-sRR',type:'pct',min:0.1,max:1000,green:true},{lbl:'mc-lVR',sld:'mc-sVR',type:'pct',min:0.1,max:1000,amber:true}
+];
+MC_CFG.forEach(cfg=>wireEditable(cfg,()=>mcUpdateDebounced()));
+['mc-sP','mc-sM','mc-sG','mc-sY','mc-sI','mc-sR','mc-sV','mc-sC','mc-sD','mc-sRR','mc-sVR'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',function(){
+    if(this._fc)return; this.dataset.override='';
+    if(id==='mc-sY') setPrazoThumbColor('mc-sY');
+    if(id==='mc-sG'||id==='mc-sI') setGrowthColor('mc-sG','mc-lG',getV('mc-sG'),getV('mc-sI'));
+    mcUpdateDebounced();
+  });
+});
+
+function randn(){let u=0,v=0;while(u===0)u=Math.random();while(v===0)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function a2m(rA,sA){
+  // Convert annual geometric return (CAGR) + annual sigma to monthly log-normal parameters.
+  // Log-normal model: r_monthly = exp(mu_m + sigma_m * Z) - 1
+  // Interpreting rA as the geometric mean (CAGR) so the MC median tracks the
+  // deterministic 'taxa fixa' line:
+  //   mu_m    = ln(1 + rA/100) / 12   (monthly log-drift, no vol adjustment)
+  //   sigma_m = sA/100 / sqrt(12)
+  // Note: the arithmetic mean of each monthly return will be slightly above rA/12
+  // due to Jensen's inequality — this is the standard log-normal tradeoff.
+  const sigmaA = sA/100;
+  const mu_m   = Math.log(1 + rA/100) / 12;
+  const sigm   = sigmaA / Math.sqrt(12);
+  return { mu_m, sigm };
+}
+function sampleReturn(mu_m, sigm){
+  // Fat tails: Gaussian mixture calibrated for Brazilian equity funds (Tarpon/Ártica/Organon)
+  // p_crash=1.7% per month (~6 truly extreme months in 30 years of data)
+  // shock=-12pp monthly + vol 2.5x — calibrated to events like Mar/2020, Oct/2008
+  // Original Ibovespa calibration used p=5% (15-20 months), but that included
+  // many moderately-bad months already captured by the base σ. Only ~6 months
+  // in 30 years showed losses of -15%+ that genuinely qualify as "crisis months".
+  if (MCState.fatTails && Math.random() < 0.017) {
+    return Math.exp(mu_m + (-0.12) + sigm * 2.5 * randn()) - 1;
+  }
+  return Math.exp(mu_m + sigm*randn()) - 1;
+}
+
+// ── Regime switching (Markov chain, 2 states: bull / bear) ─────────────────
+function getRegimeParams() {
+  return {
+    bull: { r: +document.getElementById('mc-sBullR').value, v: +document.getElementById('mc-sBullV').value, pStay: +document.getElementById('mc-sBullP').value/100 },
+    bear: { r: +document.getElementById('mc-sBearR').value, v: +document.getElementById('mc-sBearV').value, pStay: +document.getElementById('mc-sBearP').value/100 }
+  };
+}
+
+// Sample a monthly return given current regime; returns {ret, nextRegime}
+function sampleReturnRegime(regime, rp) {
+  const params = rp[regime];
+  const {mu_m, sigm} = a2m(params.r, params.v);
+  // Respect fat tails flag — applies crash shocks within regime model too
+  const ret = sampleReturn(mu_m, sigm);
+  const nextRegime = Math.random() < params.pStay ? regime : (regime==='bull'?'bear':'bull');
+  return { ret, nextRegime };
+}
+
+function mcToggleRegime() {
+  MCState.regimeOpen = !MCState.regimeOpen;
+  const panel = document.getElementById('mc-regimePanel');
+  const btn   = document.getElementById('mc-regimeToggleBtn');
+  panel.style.display = MCState.regimeOpen ? 'block' : 'none';
+  btn.textContent = MCState.regimeOpen ? '⚙ Modelo avançado — regimes de mercado (ativo)' : '⚙ Modelo avançado — regimes de mercado';
+  btn.style.color = MCState.regimeOpen ? 'var(--accent)' : '';
+  btn.style.borderColor = MCState.regimeOpen ? 'var(--accent)' : '';
+  if (MCState.regimeOpen) {
+    setRegimeReturnColor('mc-lBullR','mc-sBullR');
+    setRegimeReturnColor('mc-lBearR','mc-sBearR');
+    ['mc-sBullR','mc-sBullV','mc-sBullP','mc-sBearR','mc-sBearV','mc-sBearP'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el._regimeWired) {
+        el.addEventListener('input', () => { mcSyncRegimeLabels(); setRegimeReturnColor('mc-lBullR','mc-sBullR'); setRegimeReturnColor('mc-lBearR','mc-sBearR'); mcUpdateDebounced(); });
+        el._regimeWired = true;
+      }
+    });
+    // Wire editable labels for regime params
+    [{lbl:'mc-lBullR',sld:'mc-sBullR',type:'pct',min:-50,max:50},
+     {lbl:'mc-lBullV',sld:'mc-sBullV',type:'pct',min:1,max:60,amber:true},
+     {lbl:'mc-lBullP',sld:'mc-sBullP',type:'pct',min:50,max:99},
+     {lbl:'mc-lBearR',sld:'mc-sBearR',type:'pct',min:-50,max:20},
+     {lbl:'mc-lBearV',sld:'mc-sBearV',type:'pct',min:1,max:60,amber:true},
+     {lbl:'mc-lBearP',sld:'mc-sBearP',type:'pct',min:30,max:99}
+    ].forEach(cfg => {
+      if (!document.getElementById(cfg.sld)._regimeLblWired) {
+        wireEditable(cfg, () => { setRegimeReturnColor('mc-lBullR','mc-sBullR'); setRegimeReturnColor('mc-lBearR','mc-sBearR'); mcUpdateDebounced(); });
+        document.getElementById(cfg.sld)._regimeLblWired = true;
+      }
+    });
+  }
+  if (MCState.rendered) mcUpdate();
+}
+
+function mcSyncRegimeLabels() {
+  [['mc-lBullV','mc-sBullV','pct'],['mc-lBullP','mc-sBullP','pct'],
+   ['mc-lBearV','mc-sBearV','pct'],['mc-lBearP','mc-sBearP','pct']
+  ].forEach(([lbl,sld,type]) => syncLabel(lbl, sld, type));
+  setRegimeReturnColor('mc-lBullR','mc-sBullR');
+  setRegimeReturnColor('mc-lBearR','mc-sBearR');
+}
+
+// Regime-aware MC accum — uses Markov chain if regime panel is open
+function mcSimAccumRegime(P,M,growth,years) {
+  const rp = getRegimeParams();
+  const pBullToB = 1 - rp.bull.pStay, pBearToB = 1 - rp.bear.pStay;
+  const ssBull = pBearToB / (pBullToB + pBearToB);
+  // Pre-calculate contributions — same for every scenario
+  const contrib = new Float64Array(years+1);
+  for(let y=1;y<=years;y++) contrib[y]=M*Math.pow(1+growth/100,y-1);
+  const all = new Array(years+1);
+  for(let y=0;y<=years;y++) all[y]=new Float32Array(MCState.N);
+  for (let n=0; n<MCState.N; n++) {
+    let b=P, regime=Math.random()<ssBull?'bull':'bear';
+    all[0][n]=b;
+    for (let y=1; y<=years; y++) {
+      const mc=contrib[y];
+      for (let m=0; m<12; m++) {
+        const {ret, nextRegime} = sampleReturnRegime(regime, rp);
+        b = b*(1+ret)+mc; regime=nextRegime;
+      }
+      all[y][n]=Math.max(0,b);
+    }
+  } return all;
+}
+
+function mcSimRetireRegime(starts,monthlyAtRetire,infl,years) {
+  const rp=getRegimeParams(), gi=Math.pow(1+infl/100,1/12)-1;
+  const pBullToB=1-rp.bull.pStay, pBearToB=1-rp.bear.pStay;
+  const ssBull=pBearToB/(pBullToB+pBearToB);
+  const all=new Array(years+1);
+  for(let y=0;y<=years;y++) all[y]=new Float32Array(MCState.N);
+  for (let n=0; n<MCState.N; n++) {
+    let b=starts[n], w=monthlyAtRetire, regime=Math.random()<ssBull?'bull':'bear';
+    all[0][n]=b;
+    for (let y=1; y<=years; y++) {
+      for (let m=0; m<12; m++) {
+        const {ret, nextRegime}=sampleReturnRegime(regime,rp);
+        b=b*(1+ret)-w; w*=(1+gi); if(b<0)b=0; regime=nextRegime;
+      }
+      all[y][n]=Math.max(0,b);
+    }
+  } return all;
+}
+
+// ── Sequence of returns visualizer ────────────────────────────────────────
+function renderSeqOfReturns(P0, monthlyWithdrawal, infl, rMean, rSigma, years) {
+  const gi = Math.pow(1+infl/100,1/12)-1;
+  const N = years;
+
+  // Deterministic: N quantile points of the annual log-normal distribution.
+  // Same result every time — no randomness. Both sequences use identical returns.
+  const sigmaA = rSigma / 100;
+  const muA = Math.log(1 + rMean/100) - 0.5 * sigmaA * sigmaA;
+  function invNorm(p) {
+    // Rational approximation (Beasley-Springer-Moro)
+    const c = [-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838,
+               -2.549732539343734,4.374664141464968,2.938163982698783];
+    const d = [7.784695709041462e-03,3.224671290700398e-01,2.445134137142996,3.754408661907416];
+    const a = [0,-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,
+               1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239];
+    const b = [0,-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,
+               6.680131188771972e+01,-1.328068155288572e+01];
+    const pL=0.02425, pH=1-pL;
+    if(p<pL){const q=Math.sqrt(-2*Math.log(p));return(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);}
+    if(p<=pH){const q=p-0.5,r=q*q;return(((((a[1]*r+a[2])*r+a[3])*r+a[4])*r+a[5])*r+a[6])*q/(((((b[1]*r+b[2])*r+b[3])*r+b[4])*r+b[5])*r+1);}
+    const q=Math.sqrt(-2*Math.log(1-p));return-(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  const pool = [];
+  for(let i=1;i<=N;i++) pool.push(Math.exp(muA + sigmaA * invNorm(i/(N+1))) - 1);
+  const favorable   = [...pool].sort((a,b) => b - a); // best first
+  const unfavorable = [...pool].sort((a,b) => a - b); // worst first
+  const avgRet = pool.reduce((s,r)=>s+r,0)/pool.length;
+
+  function simulate(returns) {
+    let b = P0, w = monthlyWithdrawal;
+    const path = [P0];
+    for (let y=0; y<returns.length; y++) {
+      const rm = Math.pow(1+returns[y], 1/12) - 1;
+      for (let m=0; m<12; m++) { b=b*(1+rm)-w; w*=(1+gi); if(b<0)b=0; }
+      path.push(Math.max(0,b));
+      if (b<=0) { for(let r=y+2;r<=returns.length;r++) path.push(0); break; }
+    }
+    return path;
+  }
+
+  const pathA = simulate(favorable);
+  const pathB = simulate(unfavorable);
+  const labels = Array.from({length:N+1},(_,i)=>i===0?'Hoje':'Ano '+i);
+
+  const wrap = document.getElementById('mc-seqWrap');
+  if (!wrap) return;
+
+  wrap.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;">
+      <p style="font-family:'Courier New',monospace;font-size:0.72rem;color:var(--muted);line-height:1.6;margin-bottom:1rem;">
+        Dois aposentados com <strong>seu patrimônio e suas retiradas</strong> — mesmo retorno geométrico médio de <strong>${(avgRet*100).toFixed(1).replace('.',',')}%</strong>, mesmos ${N} anos — com a <em>ordem</em> alterada: melhores anos primeiro vs. piores anos primeiro.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div>
+          <div style="font-family:'Courier New',monospace;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--green);margin-bottom:6px;">↑ Retornos favoráveis primeiro</div>
+          <div style="position:relative;height:140px;"><canvas id="mc-seqChartA"></canvas></div>
+          <div style="font-family:'Courier New',monospace;font-size:0.7rem;color:var(--muted);margin-top:6px;">Saldo final: <strong style="color:${pathA[pathA.length-1]>0?'var(--green)':'var(--red)'}">${pathA[pathA.length-1]>0?fmtShort(pathA[pathA.length-1]):'Esgotado'}</strong></div>
+        </div>
+        <div>
+          <div style="font-family:'Courier New',monospace;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--red);margin-bottom:6px;">↓ Retornos desfavoráveis primeiro</div>
+          <div style="position:relative;height:140px;"><canvas id="mc-seqChartB"></canvas></div>
+          <div style="font-family:'Courier New',monospace;font-size:0.7rem;color:var(--muted);margin-top:6px;">Saldo final: <strong style="color:${pathB[pathB.length-1]>0?'var(--red)':'var(--red)'}">${pathB[pathB.length-1]>0?fmtShort(pathB[pathB.length-1]):'Esgotado'}</strong></div>
+        </div>
+      </div>
+      <p style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--muted);margin-top:0.9rem;line-height:1.5;opacity:0.8;">
+        Este é o <em>risco de sequência de retornos</em>: na fase de retirada, crashes no início são devastadores porque forçam retiradas quando o patrimônio está baixo, acelerando o esgotamento. O Monte Carlo acima captura este risco — é por isso que o P10 importa tanto quanto a mediana.
+      </p>
+      ${(()=>{
+        const finalA = pathA[pathA.length-1], finalB = pathB[pathB.length-1];
+        const ratio = finalA > 0 && finalB > 0 ? finalA/finalB : finalA > 0 ? null : 1;
+        if (ratio === null) {
+          return `<p style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--red);background:var(--red-light);border:1px solid var(--red);border-radius:8px;padding:8px 12px;margin-top:0.75rem;line-height:1.5;">⚠ Zona de tensão extrema: o caminho desfavorável esgota o patrimônio, enquanto o favorável sobrevive. A ordem dos retornos nos primeiros anos é determinante.</p>`;
+        } else if (ratio > 3) {
+          return `<p style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--red);background:var(--red-light);border:1px solid var(--red);border-radius:8px;padding:8px 12px;margin-top:0.75rem;line-height:1.5;">⚠ Zona de tensão: diferença de ${ratio.toFixed(0)}× entre os caminhos. A ordem dos retornos nos primeiros anos pode ser determinante para o resultado final.</p>`;
+        } else if (ratio > 1.5) {
+          return `<p style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--amber);background:var(--amber-light);border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin-top:0.75rem;line-height:1.5;">▲ Sensibilidade moderada: diferença de ${ratio.toFixed(1)}× entre os caminhos. Vale diversificar a estratégia de retirada nos primeiros anos.</p>`;
+        } else {
+          return `<p style="font-family:'Courier New',monospace;font-size:0.68rem;color:var(--green);background:var(--green-light);border:1px solid var(--green);border-radius:8px;padding:8px 12px;margin-top:0.75rem;line-height:1.5;">✓ Patrimônio robusto: diferença de ${ratio.toFixed(1)}× entre os caminhos. As retiradas são pequenas em relação ao patrimônio — a sequência de retornos tem impacto limitado.</p>`;
+        }
+      })()}
+    </div>`;
+
+  // Render charts after DOM update
+  setTimeout(() => {
+    const mkSeq = (id, path, color, getRef, setRef) => {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      const ex = getRef();
+      if (ex) { ex.destroy(); const ctx2d=canvas.getContext('2d'); if(ctx2d) ctx2d.clearRect(0,0,canvas.width,canvas.height); }
+      const ch = new Chart(canvas, {
+        type:'line', data:{labels, datasets:[{
+          data:path, borderColor:color, backgroundColor:color.replace(')',',0.08)').replace('rgb','rgba'),
+          fill:true, tension:0.3, pointRadius:0, borderWidth:1.5
+        }]},
+        options:{responsive:true,maintainAspectRatio:false,animation:false,
+          plugins:{legend:{display:false},tooltip:{enabled:false}},
+          scales:{
+            x:{ticks:{color:chartMuted(),font:{family:'Courier New',size:9},maxTicksLimit:6},grid:{display:false}},
+            y:{ticks:{color:chartMuted(),font:{family:'Courier New',size:9},callback:v=>fmtShort(v)},grid:{color:chartGrid()}}
+          }}
+      });
+      setRef(ch);
+    };
+    mkSeq('mc-seqChartA', pathA, '#1a7a52', ()=>MCState.seqChartA, ch=>{MCState.seqChartA=ch;});
+    mkSeq('mc-seqChartB', pathB, '#b83232', ()=>MCState.seqChartB, ch=>{MCState.seqChartB=ch;});
+  }, 0);
+}
+
+function mcSimAccum(P,M,growth,rMean,rSigma,years){
+  const{mu_m,sigm}=a2m(rMean,rSigma);
+  const contrib=new Float64Array(years+1);
+  for(let y=1;y<=years;y++) contrib[y]=M*Math.pow(1+growth/100,y-1);
+  const all=new Array(years+1);
+  for(let y=0;y<=years;y++) all[y]=new Float32Array(MCState.N);
+  const TWO_PI=6.283185307179586;
+  for(let n=0;n<MCState.N;n++){
+    let b=P; all[0][n]=b;
+    for(let y=1;y<=years;y++){
+      const mc=contrib[y];
+      for(let m=0;m<12;m++){
+        const u1=Math.random()||1e-10;
+        const z=Math.sqrt(-2*Math.log(u1))*Math.cos(TWO_PI*Math.random());
+        b=b*Math.exp(mu_m+sigm*z)+mc;
+      }
+      all[y][n]=b<0?0:b;
+    }
+  } return all;
+}
+
+function mcSimRetire(starts,monthlyAtRetire,infl,rMean,rSigma,years){
+  const{mu_m,sigm}=a2m(rMean,rSigma);
+  const gi=Math.pow(1+infl/100,1/12)-1;
+  const totalMonths=years*12;
+  const wSchedule=new Float64Array(totalMonths);
+  let w0=monthlyAtRetire;
+  for(let m=0;m<totalMonths;m++){wSchedule[m]=w0;w0*=(1+gi);}
+  const all=new Array(years+1);
+  for(let y=0;y<=years;y++) all[y]=new Float32Array(MCState.N);
+  const TWO_PI=6.283185307179586;
+  for(let n=0;n<MCState.N;n++){
+    let b=starts[n]; all[0][n]=b;   // reset b for each scenario
+    let depleted=false;
+    for(let y=1;y<=years;y++){
+      if(depleted){all[y][n]=0;continue;}
+      const base=(y-1)*12;
+      for(let m=0;m<12;m++){
+        const u1=Math.random()||1e-10;
+        const z=Math.sqrt(-2*Math.log(u1))*Math.cos(TWO_PI*Math.random());
+        b=b*Math.exp(mu_m+sigm*z)-wSchedule[base+m];
+        if(b<0){b=0;depleted=true;break;}
+      }
+      all[y][n]=b;
+    }
+  } return all;
+}
+
+function pct(arr,p){
+  // Works with both regular arrays and TypedArrays
+  const s = arr.slice().sort();
+  const i=(p/100)*(s.length-1),lo=Math.floor(i),hi=Math.ceil(i);
+  return s[lo]+(s[hi]-s[lo])*(i-lo);
+}
+function pctFromSorted(s,p){
+  const i=(p/100)*(s.length-1),lo=Math.floor(i),hi=Math.ceil(i);
+  return s[lo]+(s[hi]-s[lo])*(i-lo);
+}
+
+function mkBandChart(canvasId,getInst,setInst,labels,p10,p25,p50,p75,p90,det,isRetire){
+  // Band order matters for fill: each dataset fills toward the next.
+  // Layout (bottom to top): P10 → P25 (red zone), P25 → P75 (blue zone), P75 → P90 (green zone)
+  // We use 6 datasets: P10 fills to P25, P25 fills to P75, P75 fills to P90.
+  const datasets=[
+    // Red zone: P10–P25 (worst outcomes)
+    {label:'P10', data:p10, borderColor:'transparent', backgroundColor:'rgba(184,50,50,0.13)', fill:'+1', tension:0.3, pointRadius:0},
+    {label:'P25', data:p25, borderColor:'transparent', backgroundColor:'rgba(184,50,50,0.13)', fill:false, tension:0.3, pointRadius:0},
+    // Blue zone: P25–P75 (middle half — interquartile range)
+    {label:'P25b', data:p25, borderColor:'transparent', backgroundColor:'rgba(26,74,138,0.16)', fill:'+1', tension:0.3, pointRadius:0},
+    {label:'P75', data:p75, borderColor:'transparent', backgroundColor:'rgba(26,74,138,0.16)', fill:false, tension:0.3, pointRadius:0},
+    // Green zone: P75–P90 (best outcomes)
+    {label:'P75b', data:p75, borderColor:'transparent', backgroundColor:'rgba(26,122,82,0.13)', fill:'+1', tension:0.3, pointRadius:0},
+    {label:'P90', data:p90, borderColor:'transparent', backgroundColor:'rgba(26,122,82,0.13)', fill:false, tension:0.3, pointRadius:0},
+    // Median line
+    {label:'Mediana (P50)', data:p50, borderColor:'#1a4a8a', backgroundColor:'transparent', fill:false, tension:0.3, pointRadius:0, borderWidth:2},
+    // Deterministic line
+    {label:'Taxa fixa', data:det, borderColor:'#e05c2a', backgroundColor:'transparent', fill:false, tension:0.3, pointRadius:0, borderWidth:1.5, borderDash:[4,3]}
+  ];
+  const ex=getInst();
+  if(ex){ex.data.labels=labels;ex.data.datasets=datasets;ex.update('none');return;}
+  const canvasEl=document.getElementById(canvasId);
+  const ch=new Chart(canvasEl,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{enabled:false,external:makeExternalTooltip(canvasEl, (pts,labelIdx)=>{
+    const v={}; pts.forEach(p=>{v[p.dataset.label]=p.raw;});
+    // Read labels from live chart data (not stale closure) so deflator is always correct
+    const liveLabels = ch ? ch.data.labels : labels;
+    let defl = 1;
+    if (MCState.deflAccum) {
+      if (isRetire) {
+        const lbl = liveLabels[labelIdx];
+        let retireYearsElapsed = 0;
+        if (lbl && MCState.accumY) {
+          const yr = parseInt(lbl.split('/')[1]);
+          if (!isNaN(yr)) retireYearsElapsed = Math.max(0, yr - (CUR_YEAR + MCState.accumY));
+        }
+        defl = MCState.deflRetireFn ? MCState.deflRetireFn(retireYearsElapsed) : MCState.deflAccum;
+      } else {
+        const lbl = liveLabels[labelIdx];
+        let yearsElapsed = 0;
+        if (lbl && lbl !== 'Hoje') {
+          const yr = parseInt(lbl.split('/')[1]);
+          if (!isNaN(yr)) yearsElapsed = yr - CUR_YEAR;
+        }
+        const annualInfl = MCState.accumY ? Math.pow(MCState.deflAccum, 1/MCState.accumY) - 1 : 0.05;
+        defl = Math.pow(1 + annualInfl, yearsElapsed);
+      }
+    }
+    const real = nom => nom > 0 ? ` (${fmtShort(Math.round(nom/defl))} hoje)` : '';
+    return [
+      {label:'P90 (melhor 10%)', value:v['P90'],   sub:real(v['P90']),   color:'rgba(26,122,82,0.8)'},
+      {label:'P75',              value:v['P75'],   sub:real(v['P75']),   color:'rgba(26,74,138,0.6)'},
+      {label:'Mediana (P50)',    value:v['Mediana (P50)'], bold:true, sub:real(v['Mediana (P50)']), color:'#1a4a8a'},
+      {label:'P25',              value:v['P25'],   sub:real(v['P25']),   color:'rgba(184,50,50,0.6)'},
+      {label:'P10 (pior 10%)',   value:v['P10'],   sub:real(v['P10']),   color:'rgba(184,50,50,0.8)'},
+      {separator:true},
+      {label:'Taxa fixa',        value:v['Taxa fixa'], sub:real(v['Taxa fixa']), color:'#e05c2a'},
+    ];
+  })}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:10,color:chartMuted(),font:{family:'Courier New',size:10}},grid:{display:false}},y:{ticks:{color:chartMuted(),callback:v=>fmtShort(v),font:{family:'Courier New',size:10}},grid:{color:chartGrid()}}}}});
+  setInst(ch); wireCrosshair(canvasEl,getInst);
+}
+
+function bandLegend(elId){document.getElementById(elId).innerHTML=`<div class="leg"><svg width="20" height="10"><rect x="0" y="2" width="20" height="6" fill="rgba(26,122,82,0.20)" rx="2"/></svg>P75–P90</div><div class="leg"><svg width="20" height="10"><rect x="0" y="2" width="20" height="6" fill="rgba(26,74,138,0.22)" rx="2"/></svg>P25–P75</div><div class="leg"><svg width="20" height="10"><rect x="0" y="2" width="20" height="6" fill="rgba(184,50,50,0.20)" rx="2"/></svg>P10–P25</div><div class="leg"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#1a4a8a" stroke-width="2"/></svg>Mediana (P50)</div><div class="leg"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#e05c2a" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Taxa fixa</div>`;}
+
+function mcUpdate(){
+  // For large N, show a loading overlay and yield to the browser before computing,
+  // so the UI doesn't freeze without any feedback (fix #7).
+  if (MCState.N >= 5000) {
+    const note = document.getElementById('mc-scenarioNote');
+    const prevText = note ? note.textContent : '';
+    if (note) note.textContent = '⏳ calculando…';
+    setTimeout(() => { _mcUpdateCore(); if (note) note.textContent = prevText; }, 16);
+    return;
+  }
+  _mcUpdateCore();
+}
+
+function _mcUpdateCore(){
+  MC_CFG.forEach(cfg=>syncLabel(cfg.lbl,cfg.sld,cfg.type,cfg.red,cfg.green,cfg.amber,cfg.growth,cfg.inflRef));
+  setPrazoThumbColor('mc-sY');
+
+  // Read fat tails checkbox
+  const ftCheck = document.getElementById('mc-fatTailsCheck');
+  MCState.fatTails = ftCheck ? ftCheck.checked : false;
+
+  const P=getV('mc-sP'),M=getV('mc-sM'),G=getV('mc-sG'),Y=getV('mc-sY'),I=getV('mc-sI');
+  const R=getV('mc-sR'),V=getV('mc-sV'),C=getV('mc-sC'),D=getV('mc-sD'),RR=getV('mc-sRR'),VR=getV('mc-sVR');
+
+  // Cache key for accumulation: only re-simulate when accum params change.
+  // Retirement params (C, D, RR, VR) do NOT affect accumulation.
+  const accumKey = [P,M,G,Y,I,R,V,MCState.N,MCState.regimeOpen,MCState.fatTails,
+    MCState.regimeOpen?[getV('mc-sBullR'),getV('mc-sBullV'),getV('mc-sBullP'),
+                        getV('mc-sBearR'),getV('mc-sBearV'),getV('mc-sBearP')].join():''
+  ].join('|');
+
+  let accumYears, detAccum;
+  if (MCState._accumCache && MCState._accumCache.key === accumKey) {
+    // Reuse cached accumulation — retirement params changed only
+    accumYears = MCState._accumCache.accumYears;
+    detAccum   = MCState._accumCache.detAccum;
+  } else {
+    accumYears = MCState.regimeOpen
+      ? mcSimAccumRegime(P,M,G,Y)
+      : mcSimAccum(P,M,G,R,V,Y);
+    detAccum = simAccum(P,M,R,Y,G);
+    MCState._accumCache = { key: accumKey, accumYears, detAccum };
+  }
+
+  const startBalances=accumYears[Y];
+  const monthlyAtRetire=C*Math.pow(1+I/100,Y);
+  const retireYears = mcSimRetire(startBalances,monthlyAtRetire,I,RR,VR,D);
+  const detRetire=simDrawdown(detAccum[Y],monthlyAtRetire,I,RR,D);
+
+  // Deflator: converts nominal values at end of accumulation back to today's R$
+  const deflAccum = Math.pow(1+I/100, Y);
+  // Deflator at start of retirement (same as end of accumulation)
+  // For retirement year y: total elapsed = Y + y years
+  function deflRetire(y) { return Math.pow(1+I/100, Y+y); }
+
+  function exPcts(all){
+    const p10=[],p25=[],p50=[],p75=[],p90=[];
+    for(let y=0;y<all.length;y++){
+      const s=all[y].slice().sort(); // typed array .sort() is numeric by default
+      p10.push(Math.round(pctFromSorted(s,10)));
+      p25.push(Math.round(pctFromSorted(s,25)));
+      p50.push(Math.round(pctFromSorted(s,50)));
+      p75.push(Math.round(pctFromSorted(s,75)));
+      p90.push(Math.round(pctFromSorted(s,90)));
+    }
+    return{p10,p25,p50,p75,p90};
+  }
+  const ap=exPcts(accumYears),rp=exPcts(retireYears);
+  const medFinal=pct(startBalances,50),p10F=pct(startBalances,10),p90F=pct(startBalances,90);
+  const survPct=retireYears[D].filter(b=>b>0).length/MCState.N*100;
+
+  // Real values at end of accumulation
+  const medReal=medFinal/deflAccum, p10Real=p10F/deflAccum, p90Real=p90F/deflAccum;
+
+  const sCol=survPct>=90?'var(--green)':survPct>=70?'var(--amber)':'var(--red)';
+
+  // Color cost of life by sustainability
+  const mcLC = document.getElementById('mc-lC');
+  if (mcLC && !mcLC.classList.contains('editing')) mcLC.style.color = sCol;
+  const sBg=survPct>=90?'var(--green-light)':survPct>=70?'var(--amber-light)':'var(--red-light)';
+  const sIcon=survPct>=90?'✓':survPct>=70?'▲':'⚠';
+  const realRet=((1+RR/100)/(1+I/100)-1)*100;
+  // Fix 14 (MC): flag negative real return in retirement
+  const mcRealWarnSuffix = realRet<=0
+    ? ` <span style="background:var(--amber-light);color:var(--amber);border-radius:4px;padding:1px 6px;font-size:0.7rem;">⚠ retorno real negativo na retirada (${realRet.toFixed(1).replace('.',',')}% a.a.) — patrimônio se esgota mais rápido que o esperado</span>`
+    : '';
+  const gNote=G===I?`aporte cresce com a inflação (${G}%)`:G===0?'aporte nominal fixo (0% de crescimento)':G>I?`aporte cresce ${G}% a.a. — ${(G-I).toFixed(1).replace('.', ',')}pp acima da inflação`:`aporte cresce ${G}% a.a. — ${(I-G).toFixed(1).replace('.', ',')}pp abaixo da inflação`;
+  const vEl=document.getElementById('mc-verdict');
+  vEl.style.cssText=`background:${sBg};border:1px solid ${sCol};color:${sCol}`;
+  const medStartBal = pct(startBalances, 50);
+  const impliedWR = medStartBal > 0 ? (monthlyAtRetire*12/medStartBal*100) : 0;
+  const impliedWRStr = impliedWR > 0 ? ` Taxa de retirada implícita (mediana): <strong>${impliedWR.toFixed(2).replace('.',',')}%</strong>.` : '';
+  vEl.innerHTML=`${sIcon} <strong>${survPct.toFixed(0).replace('.', ',')}% de probabilidade de sucesso</strong> em ${MCState.N.toLocaleString('pt-BR')} cenários — patrimônio dura os ${D} anos de retirada. Custo de vida: ${fmtBR(C)}/mês hoje → ${fmtBR(monthlyAtRetire)}/mês na aposentadoria.${impliedWRStr}${mcRealWarnSuffix}`;
+
+  // Stats — three accum cards + taxa fixa reference
+  const detFinalForCard = detAccum[Y];
+  const detRealForCard  = detFinalForCard / deflAccum;
+  // Total nominal capital deployed: initial deposit + sum of all monthly contributions
+  // (contributions grow annually at G%). Used as the denominator for the multiplier
+  // shown when M > 0 — using only P as the base would inflate the apparent CAGR.
+  const totalInvested = (() => {
+    if (M === 0) return P > 0 ? P : 0;
+    let t = P;
+    for (let y = 1; y <= Y; y++) t += M * Math.pow(1 + G/100, y-1) * 12;
+    return t;
+  })();
+  const cagrNom = fv => {
+    if (fv <= 0) return null;
+    if (M === 0 && P > 0) {
+      // True CAGR when there are no ongoing contributions
+      return ((Math.pow(fv/P, 1/Y)-1)*100).toFixed(1).replace('.',',')+'% a.a.';
+    }
+    if (totalInvested > 0) {
+      // Multiplier on total capital invested — not a CAGR (contributions arrive over time)
+      return (fv/totalInvested).toFixed(1).replace('.',',')+'× cap. investido';
+    }
+    return null;
+  };
+  const cards = [
+    {lbl:'Patrimônio mediano', val:fmtShort(medFinal),       sub:`${fmtShort(medReal)} em R$ de hoje`,       cagr:cagrNom(medFinal),       cls:''},
+    {lbl:'Pessimista (P10)',   val:fmtShort(p10F),           sub:`${fmtShort(p10Real)} em R$ de hoje`,       cagr:cagrNom(p10F),           cls:'red'},
+    {lbl:'Otimista (P90)',     val:fmtShort(p90F),           sub:`${fmtShort(p90Real)} em R$ de hoje`,       cagr:cagrNom(p90F),           cls:'green'},
+    {lbl:'Taxa fixa',          val:fmtShort(detFinalForCard), sub:`${fmtShort(detRealForCard)} em R$ de hoje`, cagr:cagrNom(detFinalForCard), cls:'amber'},
+  ];
+  // Rank CAGR colors handled by CSS via card class — no JS needed
+  document.getElementById('mc-statsRow').innerHTML=cards
+    .map(s=>`<div class="stat ${s.cls}"><div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div>${s.cagr?`<div class="cagr">CAGR ${s.cagr}</div>`:''}</div>`).join('');
+
+  // ── Real purchasing power panel ──────────────────────────────────────────
+  const p10r=Math.round(p10F/deflAccum), p25r=Math.round(pct(startBalances,25)/deflAccum);
+  const p50r=Math.round(medFinal/deflAccum), p75r=Math.round(pct(startBalances,75)/deflAccum);
+  const p90r=Math.round(p90F/deflAccum);
+  const detFinalReal=Math.round(detAccum[Y]/deflAccum);
+  const maxBar=Math.max(p90r,detFinalReal,1);
+  function realBar(val,color,labelPct,dashed){
+    const w=Math.round(Math.max(0,val)/maxBar*100);
+    const fill=dashed
+      ? `height:100%;width:${w}%;background:repeating-linear-gradient(90deg,${color} 0,${color} 5px,transparent 5px,transparent 9px);border-radius:4px;`
+      : `height:100%;width:${w}%;background:${color};border-radius:4px;`;
+    return `<div style="display:grid;grid-template-columns:130px 1fr 130px;align-items:center;gap:10px;margin-bottom:7px;">
+      <span style="font-family:'Courier New',monospace;font-size:0.7rem;color:var(--muted);">${labelPct}</span>
+      <div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="${fill}"></div></div>
+      <span style="font-family:'Courier New',monospace;font-size:0.76rem;font-weight:bold;color:${color};text-align:right;">${fmtShort(val)}</span>
+    </div>`;
+  }
+  document.getElementById('mc-realWrap').innerHTML=`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;">
+      <p style="font-family:'Courier New',monospace;font-size:0.7rem;color:var(--muted);margin-bottom:12px;">
+        Patrimônio ao entrar na aposentadoria (${CUR_MON}/${CUR_YEAR+Y}), deflacionado para R$ de hoje.<br>
+        <span style="opacity:0.7;">Com inflação de ${I}% ao ano por ${Y} anos, o dinheiro vale ${deflAccum.toFixed(1).replace('.',',')}× menos.</span>
+      </p>
+      ${realBar(p90r,'var(--green)','P90 (melhor 10%)')}
+      ${realBar(p75r,'rgba(26,122,82,0.55)','P75')}
+      ${realBar(p50r,'var(--blue)','Mediana (P50)')}
+      ${realBar(p25r,'rgba(184,50,50,0.55)','P25')}
+      ${realBar(p10r,'var(--red)','P10 (pior 10%)')}
+      <div style="border-top:1px solid var(--border);margin:10px 0 8px;"></div>
+      ${realBar(detFinalReal,'var(--accent)','Taxa fixa',true)}
+    </div>`;
+
+  // ── Charts ───────────────────────────────────────────────────────────────
+  const stepA=Math.max(1,Math.floor(Y/40));
+  const idxA=Array.from({length:Y+1},(_,i)=>i).filter((_,j)=>j%stepA===0||_===Y);
+  bandLegend('mc-accumLegend');
+
+  // Funnel of probability note — explains why the corridor widens over time
+  const p10final = ap.p10[ap.p10.length-1], p90final = ap.p90[ap.p90.length-1];
+  const spread = p90final - p10final;
+  const funnelEl = document.getElementById('mc-funnelNote');
+  if (funnelEl) {
+    funnelEl.innerHTML = `Funil de probabilidade — o corredor se abre com o tempo. Em ${Y} anos, a diferença entre o cenário pessimista (P10) e otimista (P90) é de ${fmtShort(spread)}. Pequenas diferenças de retorno se acumulam: 1 p.p. a mais por ano durante ${Y} anos resulta num patrimônio ${((Math.pow(1.01,Y)-1)*100).toFixed(0).replace('.',',')}% maior.${MCState.fatTails ? ' Caudas gordas ativas — P10 inclui ~6 meses de crise em 30 anos, calibrados para fundos de ações brasileiros.' : ''}`;
+  }
+  mkBandChart('mc-accumChart',()=>MCState.accumChartInst,ch=>{MCState.accumChartInst=ch;},
+    idxA.map(i=>i===0?'Hoje':`${CUR_MON}/${CUR_YEAR+i}`),
+    idxA.map(i=>ap.p10[i]),idxA.map(i=>ap.p25[i]),idxA.map(i=>ap.p50[i]),idxA.map(i=>ap.p75[i]),idxA.map(i=>ap.p90[i]),idxA.map(i=>detAccum[i]));
+
+  // Pass deflators to band chart tooltip so it can show real values too
+  MCState.deflAccum = deflAccum;
+  MCState.deflRetireFn = deflRetire;
+  MCState.accumY = Y;
+
+  const stepR=Math.max(1,Math.floor(D/40));
+  const idxR=Array.from({length:D+1},(_,i)=>i).filter((_,j)=>j%stepR===0||_===D);
+  bandLegend('mc-retireLegend');
+  mkBandChart('mc-retireChart',()=>MCState.retireChartInst,ch=>{MCState.retireChartInst=ch;},
+    idxR.map(i=>i===0?`${CUR_MON}/${CUR_YEAR+Y}`:`${CUR_MON}/${CUR_YEAR+Y+i}`),
+    idxR.map(i=>rp.p10[i]),idxR.map(i=>rp.p25[i]),idxR.map(i=>rp.p50[i]),idxR.map(i=>rp.p75[i]),idxR.map(i=>rp.p90[i]),idxR.map(i=>detRetire[i]),
+    true /* isRetire */);
+
+  const horizons=[...new Set([5,10,15,20,25,D].filter(h=>h<=D))].sort((a,b)=>a-b);
+  document.getElementById('mc-survivalWrap').innerHTML=horizons.map(h=>{
+    const s=retireYears[h].filter(b=>b>0).length/MCState.N*100;
+    const c=s>=90?'var(--green)':s>=70?'var(--amber)':'var(--red)';
+    return `<div class="surv-row"><span class="surv-label">Ano ${h} da retirada<br><span style="font-size:0.65rem">${CUR_MON}/${CUR_YEAR+Y+h}</span></span><div class="surv-bar-bg"><div class="surv-bar-fill" style="width:${s}%;background:${c}"></div></div><span class="surv-pct" style="color:${c}">${s.toFixed(0).replace('.', ',')}%</span></div>`;
+  }).join('');
+
+  // Retire stats cards — P10/P50/P90/taxa fixa at end of retirement, in today's R$
+  const deflEnd = deflRetire(D);
+  const rp10End = rp.p10[D], rp50End = rp.p50[D], rp90End = rp.p90[D];
+  const detEnd  = detRetire[D];
+  const retireStatsEl = document.getElementById('mc-retireStatsRow');
+  if (retireStatsEl) {
+    retireStatsEl.innerHTML = [
+      {lbl:`Patrimônio mediano`, val:fmtShort(rp50End), sub:`${fmtShort(Math.round(rp50End/deflEnd))} em R$ de hoje`, cls: rp50End > 0 ? '' : 'red'},
+      {lbl:`Pessimista (P10)`,           val:fmtShort(rp10End), sub:`${fmtShort(Math.round(rp10End/deflEnd))} em R$ de hoje`, cls:'red'},
+      {lbl:`Otimista (P90)`,         val:fmtShort(rp90End), sub:`${fmtShort(Math.round(rp90End/deflEnd))} em R$ de hoje`, cls:'green'},
+      {lbl:`Taxa fixa`,          val:fmtShort(detEnd),  sub:`${fmtShort(Math.round(detEnd/deflEnd))} em R$ de hoje`,  cls:'amber'},
+    ].map(s=>`<div class="stat ${s.cls}"><div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div></div>`).join('');
+  }
+
+  // Regime stats summary
+  if (MCState.regimeOpen) {
+    const rp = getRegimeParams();
+    const pBullToB=1-rp.bull.pStay, pBearToB=1-rp.bear.pStay;
+    const ssBull=pBearToB/(pBullToB+pBearToB)*100;
+    const impliedR=(ssBull/100*rp.bull.r + (1-ssBull/100)*rp.bear.r).toFixed(1).replace('.',',');
+    const el=document.getElementById('mc-regimeStats');
+    if(el) el.innerHTML=`Retorno implícito (estado estacionário): ${impliedR}% a.a. &nbsp;·&nbsp; % do tempo em bull: ${ssBull.toFixed(0).replace('.',',')}% &nbsp;·&nbsp; bear: ${(100-ssBull).toFixed(0).replace('.',',')}%`;
+    mcSyncRegimeLabels();
+  }
+
+  // Sequence of returns — use actual user scenario
+  const seqP0 = medFinal;
+  renderSeqOfReturns(seqP0, monthlyAtRetire, I, RR, VR, D);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// QUANTO POUPAR
+// ══════════════════════════════════════════════════════════════════════════
+const QPState = { accumChart:null, drawdownChart:null, longevityChart:null, runwayChart:null, patrimonioChart:null, scenarioCompChart:null, currentMode:'plan', rendered:false };
+const PWR = 0.035;
+const PWR_TIP = `<span class="tooltip-wrap"><span class="tooltip-icon">?</span><span class="tooltip-box-up">Perpetual Withdrawal Rate — taxa máxima de retirada que, historicamente, nunca esgotou o patrimônio real. Estudos originais (Bengen, Trinity) usam dados americanos; 3,5% é uma proxy conservadora para o contexto brasileiro.</span></span>`;
+
+const QP_CONTROLS = {
+  plan:[
+    {id:'qCusto',label:'Custo de vida mensal (R$ de hoje)',type:'currency',min:1000,max:100000,step:1000,value:20000},
+    {id:'qPrazo',label:'Prazo de acumulação (anos)',type:'years',min:1,max:60,step:1,value:30,prazo:true},
+    {id:'qG',label:'Crescimento anual dos aportes',type:'pct',min:0,max:20,step:0.5,value:5,growth:true,inflRef:'qp-qI'},
+    {id:'qRetiro',label:'Prazo de retirada (anos)',type:'years',min:5,max:60,step:1,value:30,prazo:true},
+    {id:'qP0',label:'Patrimônio já investido',type:'currency',min:0,max:5000000,step:10000,value:100000},
+    {id:'qRA',label:'Taxa de juros — acumulação',type:'pct',min:1,max:30,step:0.5,value:15,section:'Taxas',rate:true},
+    {id:'qRR',label:'Taxa de juros — retirada',type:'pct',min:1,max:20,step:0.5,value:10,rate:true},
+    {id:'qI',label:'Inflação anual',type:'pct',min:0,max:20,step:0.5,value:5,inflacao:true},
+    {id:'qWR',label:'Taxa de retirada (cenário escolhido)',type:'pct',min:1,max:12,step:0.25,value:5}
+  ],
+  years:[
+    {id:'qCusto',label:'Custo de vida mensal (R$ de hoje)',type:'currency',min:1000,max:100000,step:1000,value:20000},
+    {id:'qM',label:'Aporte mensal (1º mês)',type:'currency',min:0,max:50000,step:500,value:3000},
+    {id:'qG',label:'Crescimento anual dos aportes',type:'pct',min:0,max:20,step:0.5,value:5,growth:true,inflRef:'qp-qI'},
+    {id:'qRetiro',label:'Prazo de retirada (anos)',type:'years',min:5,max:60,step:1,value:30,prazo:true},
+    {id:'qP0',label:'Patrimônio já investido',type:'currency',min:0,max:5000000,step:10000,value:100000},
+    {id:'qRA',label:'Taxa de juros — acumulação',type:'pct',min:1,max:30,step:0.5,value:15,section:'Taxas',rate:true},
+    {id:'qRR',label:'Taxa de juros — retirada',type:'pct',min:1,max:20,step:0.5,value:10,rate:true},
+    {id:'qI',label:'Inflação anual',type:'pct',min:0,max:20,step:0.5,value:5,inflacao:true},
+    {id:'qWR',label:'Taxa de retirada desejada',type:'pct',min:1,max:12,step:0.25,value:5}
+  ]
+};
+
+function qpGetV(id){const el=document.getElementById('qp-'+id);if(!el)return 0;const ov=el.dataset.override;return(ov!==undefined&&ov!=='')?+ov:+el.value;}
+function qpGetVals(){const v={};QP_CONTROLS[QPState.currentMode].forEach(c=>{v[c.id]=qpGetV(c.id);});return v;}
+function qpFmtC(c,v){return c.type==='currency'?fmtBR(v):c.type==='pct'?v+'%':v+' anos';}
+
+function qpBuildControls(){
+  const grid=document.getElementById('qp-controlsGrid');
+  const ctrls=QP_CONTROLS[QPState.currentMode];
+  grid.innerHTML='';
+  ctrls.forEach(c=>{
+    if(c.section){const h=document.createElement('h4');h.textContent=c.section;grid.appendChild(h);}
+    const div=document.createElement('div');
+    div.className='ctrl'+(c.inflacao||c.red?' inflation-ctrl':c.rate?' rate-ctrl':c.vol?' vol-ctrl':c.prazo?' prazo-ctrl':c.growth?' growth-ctrl':'');
+    div.innerHTML=`<div class="ctrl-header"><label>${c.label}</label><span class="ctrl-val" id="qp-${c.id}lbl" contenteditable="true" spellcheck="false"${(c.inflacao||c.red)?' style="color:var(--red)"':c.rate?' style="color:var(--green)"':c.vol?' style="color:var(--amber)"':''}>${qpFmtC(c,c.value)}</span></div><input type="range" id="qp-${c.id}" min="${c.min}" max="${c.max}" step="${c.step}" value="${c.value}">`;
+    grid.appendChild(div);
+    document.getElementById('qp-'+c.id).addEventListener('input',function(){
+      if(this._fc)return;
+      this.dataset.override='';
+      const lbl=document.getElementById('qp-'+c.id+'lbl');
+      if(!lbl.classList.contains('editing')){
+        lbl.textContent=qpFmtC(c,+this.value);
+        if(c.inflacao||c.red) lbl.style.color='var(--red)';
+        else if(c.rate) lbl.style.color='var(--green)';
+        else if(c.vol) lbl.style.color='var(--amber)';
+      }
+      if(c.prazo) setPrazoThumbColor('qp-'+c.id);
+      if(c.growth||c.id==='qI') qpRefreshGrowthColor();
+      if(QPState.rendered) qpUpdateDebounced();
+    });
+    wireEditable({lbl:'qp-'+c.id+'lbl',sld:'qp-'+c.id,type:c.type,min:c.min,red:c.inflacao||c.red},()=>{
+      if(c.growth||c.id==='qI') qpRefreshGrowthColor();
+      if(QPState.rendered) qpUpdateDebounced();
+    });
+  });
+  // Set initial colors after build
+  if(document.getElementById('qp-qI')) {
+    qpRefreshGrowthColor();
+  }
+  // Set initial prazo thumb colors
+  ctrls.filter(c=>c.prazo).forEach(c=>setPrazoThumbColor('qp-'+c.id));
+}
+
+function qpRefreshGrowthColor(){
+  const gEl=document.getElementById('qp-qG'), iEl=document.getElementById('qp-qI');
+  if(!gEl||!iEl) return;
+  const gVal=+(gEl.dataset.override||gEl.value), iVal=+(iEl.dataset.override||iEl.value);
+  setGrowthColor('qp-qG','qp-qGlbl',gVal,iVal);
+}
+
+function qpSetMode(mode,el){
+  QPState.currentMode=mode;
+  if(QPState.accumChart){QPState.accumChart.destroy();QPState.accumChart=null;}
+  if(QPState.drawdownChart){QPState.drawdownChart.destroy();QPState.drawdownChart=null;}
+  if(QPState.longevityChart){QPState.longevityChart.destroy();QPState.longevityChart=null;}
+  if(QPState.runwayChart){QPState.runwayChart.destroy();QPState.runwayChart=null;}
+  if(QPState.patrimonioChart){QPState.patrimonioChart.destroy();QPState.patrimonioChart=null;}
+  document.querySelectorAll('.mode-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); qpBuildControls(); if(QPState.rendered)qpUpdate();
+}
+
+const rReal=(rN,infl)=>(1+rN/100)/(1+infl/100)-1;
+
+// Closed-form exact solve for monthly contribution M needed to reach FV in `years`
+// with monthly compounding at rAccum% p.a. and annual contribution growth of growth%.
+// Derived from: FV = P*(1+rY)^n + M * af * ((1+rY)^n - (1+g)^n) / (rY - g)
+// where af = ((1+rm)^12 - 1)/rm  (future value factor of monthly payments within a year)
+// and rY = (1+rm)^12 - 1  (effective annual rate from monthly rate rm)
+// 0.0000% error vs the iterative simAccum model — 300x faster than binary search.
+function qpSolveContrib(FV, P0, rAccum, years, growth) {
+  if (FV <= P0) return 0;
+  const rm  = Math.pow(1 + rAccum/100, 1/12) - 1;
+  const rY  = Math.pow(1 + rm, 12) - 1;
+  const g   = growth / 100;
+  const af  = rm > 1e-12 ? (Math.pow(1+rm,12) - 1) / rm : 12;
+  const rYn = Math.pow(1+rY, years);
+  const gn  = Math.pow(1+g,  years);
+  const rem = FV - P0 * rYn;
+  if (rem <= 0) return 0;
+  const denom = Math.abs(rY - g) < 1e-9
+    ? af * years * Math.pow(1+rY, years-1)
+    : af * (rYn - gn) / (rY - g);
+  return Math.max(0, rem / denom);
+}
+
+function qpYearsUntilDepletion(P0,monthlyAtRetire,infl,rRetire){
+  const rm=Math.pow(1+rRetire/100,1/12)-1,gi=Math.pow(1+infl/100,1/12)-1;
+  let b=P0,w=monthlyAtRetire;
+  // Check depletion BEFORE inflating w so the depleting month isn't counted twice
+  for(let y=1;y<=200;y++){for(let m=0;m<12;m++){b=b*(1+rm)-w;if(b<=0)return y;w*=(1+gi);}}
+  return null;
+}
+
+function rateLevel(wR,rrR){const e=wR-rrR*100;if(e<=0)return'perpetua';if(e<=1)return'conservadora';if(e<=3)return'moderada';return'elevada';}
+function rateColor(wR,rrR){const l=rateLevel(wR,rrR);if(l==='perpetua')return'var(--green)';if(l==='conservadora')return'var(--blue)';if(l==='moderada')return'var(--amber)';return'var(--red)';}
+function rateDesc(wR,rrR){const e=wR-rrR*100,l=rateLevel(wR,rrR);if(l==='perpetua')return`sustentável — retirada ${Math.abs(e).toFixed(1).replace('.', ',')}% abaixo do retorno real; patrimônio cresce`;const s=`+${e.toFixed(1).replace('.', ',')}%`;if(l==='conservadora')return`conservador — consome ${s} acima do retorno real; patrimônio diminui lentamente`;if(l==='moderada')return`moderado — consome ${s} acima do retorno real; risco crescente de esgotamento`;return`agressivo — consome ${s} acima do retorno real; patrimônio em risco`;}
+function scenarioName(wR,rrR){const l=rateLevel(wR,rrR);if(l==='perpetua')return'Cenário sustentável';if(l==='conservadora')return'Cenário conservador';if(l==='moderada')return'Cenário moderado';return'Cenário agressivo';}
+
+// ── wR (withdrawal rate) slider dynamic color ─────────────────────────────
+// Green = sustentável, blue = conservador, amber = moderado, red = elevado
+function qpRefreshWRColor(wR, rrR) {
+  const lbl = document.getElementById('qp-qWRlbl');
+  const sld = document.getElementById('qp-qWR');
+  if (!lbl || !sld) return;
+  const color = rateColor(wR, rrR);
+  if (!lbl.classList.contains('editing')) lbl.style.color = color;
+  const styleId = 'wr-thumb-style';
+  let styleEl = document.getElementById(styleId);
+  if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = styleId; document.head.appendChild(styleEl); }
+  styleEl.textContent = `#qp-qWR::-webkit-slider-thumb { background: ${color} !important; }`;
+}
+
+// ── Scenario comparison chart ─────────────────────────────────────────────
+// Same starting patrimônio (FVfin), three withdrawal rates: chosen, equilibrium, PWR 3.5%.
+// Shows directly why the rates produce different outcomes without needing two cards.
+function qpRenderScenarioCompChart(FVfin, mAR, custo, I, rR, prazo, retiro, wR, rrR) {
+  const YEARS = retiro;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const deflRetire = Math.pow(1 + I/100, prazo);
+
+  // Each scenario has its OWN patrimônio target and starts from it
+  const FVsust = rrR > 0 ? (mAR * 12) / rrR : FVfin;
+  const FVpwr  = (mAR * 12) / 0.035;
+
+  // Monthly withdrawal is the same cost of life for all (mAR, grows with inflation)
+  function ddReal(FVstart) {
+    const rm = Math.pow(1 + rR/100, 1/12) - 1;
+    const gi = Math.pow(1 + I/100,  1/12) - 1;
+    let b = FVstart, w = mAR;
+    const path = [FVstart / deflRetire];
+    for (let y = 1; y <= YEARS; y++) {
+      for (let m = 0; m < 12; m++) { b = b*(1+rm) - w; w *= (1+gi); if (b <= 0) { b = 0; } }
+      const defl = Math.pow(1 + I/100, prazo + y);
+      path.push(Math.max(0, b / defl));
+      if (b <= 0) { for (let r = y+1; r <= YEARS; r++) path.push(0); break; }
+    }
+    return path;
+  }
+
+  const pathChosen = ddReal(FVfin);
+  const pathSust   = ddReal(FVsust);
+  const pathPWR    = ddReal(FVpwr);
+
+  const depChosen = pathChosen.findIndex((v,i) => i > 0 && v === 0);
+  const depSust   = pathSust.findIndex((v,i)   => i > 0 && v === 0);
+  const depPWR    = pathPWR.findIndex((v,i)    => i > 0 && v === 0);
+  const fmtDep = (dep) => dep === -1 ? '∞' : `esgota +${dep}a`;
+
+  const labels = Array.from({length: YEARS+1}, (_,i) => i === 0 ? 'Aposent.' : (i % 5 === 0 ? `+${i}a` : ''));
+
+  const colChosen = rateColor(wR, rrR);
+  const colSust   = isDark ? '#d4882a' : '#a05c00';
+  const colPWR    = isDark ? '#2db87a' : '#1a7a52';
+
+  const subtitle = document.getElementById('qp-scenarioCompSubtitle');
+  if (subtitle) subtitle.innerHTML =
+    `<span style="color:#1a4a8a">${fmtShort(FVfin)} · ${wR.toFixed(2).replace('.',',')}% — ${fmtDep(depChosen)}</span>&ensp;` +
+    `<span style="color:${colSust}">${fmtShort(FVsust)} · equilíbrio — ${fmtDep(depSust)}</span>&ensp;` +
+    `<span style="color:${colPWR}">${fmtShort(FVpwr)} · PWR 3,5% — ${fmtDep(depPWR)}</span>`;
+
+  const legendEl = document.getElementById('qp-scenarioCompLegend');
+  if (legendEl) legendEl.innerHTML =
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#1a4a8a" stroke-width="2.5"/></svg>${fmtShort(FVfin)} · taxa escolhida</div>` +
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="${colSust}" stroke-width="2" stroke-dasharray="5,3"/></svg>${fmtShort(FVsust)} · equilíbrio</div>` +
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="${colPWR}" stroke-width="2" stroke-dasharray="3,2"/></svg>${fmtShort(FVpwr)} · PWR 3,5%</div>`;
+
+  const canvas = document.getElementById('qp-scenarioCompChart');
+  const datasets = [
+    { label: `Taxa escolhida → ${fmtShort(FVfin)}`, data: pathChosen, borderColor: '#1a4a8a', borderWidth: 2.5, backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, spanGaps: false },
+    { label: `Equilíbrio → ${fmtShort(FVsust)}`, data: pathSust, borderColor: colSust, borderWidth: 2, borderDash: [5,3], backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, spanGaps: false },
+    { label: `PWR 3,5% → ${fmtShort(FVpwr)}`, data: pathPWR, borderColor: colPWR, borderWidth: 2, borderDash: [3,2], backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, spanGaps: false }
+  ];
+
+  const makeTooltip = (canvas) => makeExternalTooltip(canvas, (pts) => {
+    const v = {}; pts.forEach(p => { v[p.dataset.label] = p.raw; });
+    return datasets.map(d => ({ label: d.label, value: Math.max(0, v[d.label] ?? 0), color: d.borderColor }));
+  });
+
+  if (QPState.scenarioCompChart) { QPState.scenarioCompChart.destroy(); QPState.scenarioCompChart = null; }
+  QPState.scenarioCompChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false, external: makeTooltip(canvas) }
+      },
+      scales: {
+        x: { ticks: { color: chartMuted(), font: { family: 'Courier New', size: 9 }, autoSkip: false, callback: (v, i) => labels[i] || '' }, grid: { display: false } },
+        y: { min: 0, ticks: { color: chartMuted(), font: { family: 'Courier New', size: 10 }, callback: v => fmtShort(v) }, grid: { color: chartGrid() }, title: { display: true, text: 'patrimônio em R$ de hoje', color: chartMuted(), font: { family: 'Courier New', size: 9 } } }
+      }
+    }
+  });
+  wireCrosshair(canvas, () => QPState.scenarioCompChart);
+}
+
+// ── Drawdown sensitivity chart ────────────────────────────────────────────
+// Shows what happens to the CALCULATED patrimônio (FVfin) during retirement.
+// Fixed: FVfin, mAR (monthly cost), retiro (years).
+// Three lines: rR-2pp (pessimistic), rR (base), rR+2pp (optimistic).
+// Shaded band between pessimistic and optimistic.
+// Y-axis in real (today's) R$ to show purchasing-power preservation.
+// X-axis: years into retirement (0 = aposentadoria).
+// Reference line: user's retiro target.
+// This answers the real question: "Does this patrimônio hold up, and how sensitive is it?"
+function qpRenderLongevityChart(FVfin, mAR, custo, I, rR, prazo, retiro, chosenWR, sustWR) {
+  const YEARS = Math.max(retiro, 40); // show at least 40 years
+  const rLow  = Math.max(rR - 2, 0.5);
+  const rMid  = rR;
+  const rHigh = rR + 2;
+
+  // Simulate drawdown for each rate scenario
+  // Returns array of real (deflated to today's R$) balances, year 0..YEARS
+  function drawdownReal(rate) {
+    const rm  = Math.pow(1 + rate/100, 1/12) - 1;
+    const gi  = Math.pow(1 + I/100,    1/12) - 1;
+    const deflRetire = Math.pow(1 + I/100, prazo); // FVfin is in nominal retirement R$
+    let b = FVfin, w = mAR; // mAR already in retirement nominal R$
+    const path = [FVfin / deflRetire]; // year 0 in today's R$
+    for (let y = 1; y <= YEARS; y++) {
+      for (let m = 0; m < 12; m++) { b = b*(1+rm) - w; w *= (1+gi); if (b < 0) b = 0; }
+      const deflTotal = deflRetire * Math.pow(1+I/100, y);
+      path.push(Math.max(0, b / deflTotal));
+    }
+    return path;
+  }
+
+  const pathLow  = drawdownReal(rLow);
+  const pathMid  = drawdownReal(rMid);
+  const pathHigh = drawdownReal(rHigh);
+
+  const labels = Array.from({length: YEARS+1}, (_, i) =>
+    i === 0 ? 'Aposent.' : (i % 5 === 0 ? `+${i}a` : '')
+  );
+
+  // Find depletion years
+  const depLow  = pathLow.findIndex((v,i)  => i > 0 && v === 0);
+  const depMid  = pathMid.findIndex((v,i)  => i > 0 && v === 0);
+  const depHigh = pathHigh.findIndex((v,i) => i > 0 && v === 0);
+
+  const subtitle = document.getElementById('qp-longevitySubtitle');
+  if (subtitle) {
+    const fmt = (dep, rate) => dep === -1
+      ? `<span style="color:var(--green)">não esgota em ${YEARS}a</span>`
+      : `<span style="color:var(--red)">esgota em ~${dep}a</span>`;
+    subtitle.innerHTML =
+      `patrimônio <strong>${fmtShort(FVfin)}</strong> · custo <strong>${fmtBR(mAR)}/mês</strong> na aposentadoria · ` +
+      `em R$ de hoje — ` +
+      `<span style="color:var(--amber)">${rLow}%</span>: ${fmt(depLow)} · ` +
+      `<span style="color:var(--blue)">${rMid}%</span>: ${fmt(depMid)} · ` +
+      `<span style="color:#2a9d8f">${rHigh}%</span>: ${fmt(depHigh)}`;
+  }
+
+  const legendEl = document.getElementById('qp-longevityLegend');
+  if (legendEl) legendEl.innerHTML =
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#2a9d8f" stroke-width="2"/></svg>juros ${rHigh}% (+2pp)</div>` +
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="var(--blue)" stroke-width="2.5"/></svg>juros ${rMid}% (base — taxa escolhida)</div>` +
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4,2"/></svg>juros ${rLow}% (−2pp)</div>` +
+    `<div class="leg"><div style="width:14px;height:8px;background:rgba(42,157,143,0.15);border-radius:2px;flex-shrink:0;"></div>banda de incerteza</div>`;
+
+  const canvas = document.getElementById('qp-longevityChart');
+
+  // Band dataset: fill between high and low using Chart.js fill
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+  const datasets = [
+    // Band fill — high line (fills down to low via dataset index)
+    {
+      label: `Juros ${rHigh}%`,
+      data: pathHigh,
+      borderColor: '#2a9d8f',
+      borderWidth: 2,
+      backgroundColor: 'rgba(42,157,143,0.12)',
+      fill: '+1', // fill to the next dataset (low)
+      tension: 0.3, pointRadius: 0, spanGaps: false, order: 2
+    },
+    // Band bottom — low line
+    {
+      label: `Juros ${rLow}%`,
+      data: pathLow,
+      borderColor: isDark ? '#d4882a' : '#a05c00',
+      borderWidth: 1.5,
+      borderDash: [4, 2],
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.3, pointRadius: 0, spanGaps: false, order: 3
+    },
+    // Base scenario — drawn on top, blue to match the left card
+    {
+      label: `Juros ${rMid}% (base)`,
+      data: pathMid,
+      borderColor: isDark ? '#4d8fd4' : '#1a4a8a',
+      borderWidth: 2.5,
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.3, pointRadius: 0, spanGaps: false, order: 1
+    }
+  ];
+
+  // Annotation: retiro target line
+  const retiroAnnotation = {
+    type: 'line', scaleID: 'x', value: retiro,
+    borderColor: 'rgba(100,100,100,0.4)', borderWidth: 1.5, borderDash: [5,3]
+  };
+
+  // Custom plugin: labels on canvas
+  const drawdownLabelPlugin = {
+    id: 'drawdownLabels',
+    afterDraw(chart) {
+      const ctx = chart.ctx;
+      const xs = chart.scales.x, ys = chart.scales.y;
+      const top = chart.chartArea.top, bottom = chart.chartArea.bottom;
+      ctx.save();
+      // "meta: retiro anos" on the retiro line
+      const xRetiro = xs.getPixelForValue(retiro);
+      if (xRetiro > xs.left && xRetiro < xs.right) {
+        ctx.fillStyle = 'rgba(80,80,80,0.8)';
+        ctx.font = '9px "Courier New", monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`meta: ${retiro}a`, xRetiro + 4, top + 4);
+      }
+      // Zero line label if patrimony reaches zero
+      const yZero = ys.getPixelForValue(0);
+      if (yZero < bottom) {
+        ctx.fillStyle = 'rgba(184,50,50,0.6)';
+        ctx.font = '9px "Courier New", monospace';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('R$ 0', xs.right - 4, yZero - 2);
+      }
+      ctx.restore();
+    }
+  };
+
+  const makeTooltip = (canvas) => makeExternalTooltip(canvas, (pts, dataIndex) => {
+    const yr = dataIndex;
+    const rows = [
+      { label: 'Ano de retirada', raw: yr === 0 ? 'Aposentadoria' : `+${yr} anos` }
+    ];
+    // Show all three scenarios
+    const vals = [
+      { label: `Juros ${rHigh}% (+2pp)`, v: pathHigh[yr], color: '#2a9d8f' },
+      { label: `Juros ${rMid}% (base)`,  v: pathMid[yr],  color: isDark ? '#4d8fd4' : '#1a4a8a' },
+      { label: `Juros ${rLow}% (−2pp)`,  v: pathLow[yr],  color: isDark ? '#d4882a' : '#a05c00' },
+    ];
+    rows.push({ separator: true });
+    vals.forEach(({ label, v, color }) => {
+      rows.push({ label, value: Math.max(0, v), bold: v === pathMid[yr], color });
+    });
+    rows.push({ separator: true });
+    // Show real monthly cost at this retirement year
+    const deflAtYr = Math.pow(1+I/100, yr);
+    rows.push({ label: 'Custo de vida (R$ de hoje)', value: mAR / Math.pow(1+I/100, prazo) });
+    if (yr > 0 && retiro > 0) {
+      const pct = Math.round(yr / retiro * 100);
+      rows.push({ label: 'Progresso na aposentadoria', raw: `${pct}%` });
+    }
+    return rows;
+  });
+
+  if (QPState.longevityChart) { QPState.longevityChart.destroy(); QPState.longevityChart = null; }
+
+  QPState.longevityChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    plugins: [drawdownLabelPlugin],
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false, external: makeTooltip(canvas) },
+        annotation: { annotations: { retiroAnnotation } }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: chartMuted(), font: { family: 'Courier New', size: 9 },
+            autoSkip: false,
+            callback: (val, idx) => labels[idx] || ''
+          },
+          grid: { display: false }
+        },
+        y: {
+          min: 0,
+          ticks: { color: chartMuted(), font: { family: 'Courier New', size: 10 }, callback: v => fmtShort(v) },
+          grid: { color: chartGrid() },
+          title: { display: true, text: 'patrimônio em R$ de hoje', color: chartMuted(), font: { family: 'Courier New', size: 9 } }
+        }
+      }
+    }
+  });
+  wireCrosshair(canvas, () => QPState.longevityChart);
+}
+
+
+  const ratesRange = [];
+// ── Runway chart: three parallel trajectories from day 0 ─────────────────────
+// Each line accumulates toward its own target patrimônio, then retires
+// withdrawing the SAME monthly cost (mAR). What differs: how much you need
+// to accumulate (and therefore what monthly contribution is required).
+//   Taxa escolhida → FVfin   → Mfin  (user's chosen scenario)
+//   Sustentável    → FVsust  → Msust (withdrawing only real return, never depletes)
+//   PWR 3.5%       → FVpwr   → Mpwr  (historical safe withdrawal reference)
+// All three: same cost of life, different patrimônio targets, different aportes.
+function qpRenderRunwayChart(P0, Mfin, rA, G, prazo, FVfin, mAR, custo, I, rR, retiro, wR, rrR) {
+  const FVsust = rrR > 0 ? (mAR * 12) / rrR : FVfin;
+  const FVpwr  = (mAR * 12) / 0.035;
+  // Monthly contributions needed for each target
+  const Msust = qpSolveContrib(FVsust, P0, rA, prazo, G);
+  const Mpwr  = qpSolveContrib(FVpwr,  P0, rA, prazo, G);
+
+  // ── Accumulation paths ─────────────────────────────────────────────────
+  const accumChosen = simAccum(P0, Mfin,  rA, prazo, G);
+  const accumSust   = simAccum(P0, Msust, rA, prazo, G);
+  const accumPwr    = simAccum(P0, Mpwr,  rA, prazo, G);
+
+  // ── Withdrawal: all withdraw same mAR, from their respective FV ────────
+  const ddStep = Math.max(1, Math.floor(retiro / 40));
+  const ddIdxs = [];
+  for (let i = 0; i <= retiro; i += ddStep) ddIdxs.push(i);
+  if (ddIdxs[ddIdxs.length-1] !== retiro) ddIdxs.push(retiro);
+  const ddIdxsSet = new Set(ddIdxs);
+
+  const ddChosen = simDrawdown(FVfin,  mAR, I, rR, retiro);
+  const ddSust   = simDrawdown(FVsust, mAR, I, rR, retiro);
+  const ddPwr    = simDrawdown(FVpwr,  mAR, I, rR, retiro);
+
+  // ── Shared X axis ──────────────────────────────────────────────────────
+  const accumAllIdxs = Array.from({length: prazo + 1}, (_, i) => i);
+  const allXs = [...new Set([...accumAllIdxs, ...ddIdxs.map(i => prazo + i)])].sort((a,b)=>a-b);
+  const xLabels = allXs.map(x => {
+    if (x === 0) return 'Hoje';
+    if (x === prazo) return `${CUR_MON}/${CUR_YEAR + prazo}`;
+    return `${CUR_MON}/${CUR_YEAR + x}`;
+  });
+
+  // Retirement outcomes
+  const chosenEnd = ddChosen[retiro] || 0;
+  const sustEnd   = ddSust[retiro]   || 0;
+  const pwrEnd    = ddPwr[retiro]    || 0;
+
+  // Show how long the "≈ sustentável" trajectory actually lasts given inflation-adjusted withdrawals
+  const sustDepYRunway = qpYearsUntilDepletion(FVsust, mAR, I, rR);
+  const sustEndNote = sustDepYRunway === null
+    ? `${fmtShort(sustEnd)} (∞)`
+    : sustEnd <= 0
+      ? `esgotado (dura ~${sustDepYRunway} anos)`
+      : `${fmtShort(sustEnd)} <span style="color:var(--amber)">(dura ~${sustDepYRunway} anos)</span>`;
+
+  const runwaySubtitle = document.getElementById('qp-runwaySubtitle');
+  if (runwaySubtitle) {
+    runwaySubtitle.innerHTML =
+      `custo de vida: <strong>${fmtBR(mAR)}/mês</strong> na aposentadoria (${fmtBR(custo)}/mês hoje) · ` +
+      `ao fim de ${retiro} anos: ` +
+      `<span style="color:#e05c2a">■</span> ${chosenEnd <= 0 ? 'esgotado' : fmtShort(chosenEnd)} · ` +
+      `<span style="color:#1a7a52">■</span> ${sustEndNote} · ` +
+      `<span style="color:#b07020">■</span> ${fmtShort(pwrEnd)}`;
+  }
+
+  const legendEl = document.getElementById('qp-accumLegend');
+  if (legendEl) legendEl.innerHTML =
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#e05c2a" stroke-width="2"/></svg>Taxa escolhida ${wR.toFixed(2).replace('.',',')}% · ${fmtBR(Mfin)}/mês</div>` +
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#1a7a52" stroke-width="2"/></svg>≈ Sustentável ${(rrR*100).toFixed(2).replace('.',',')}% · ${fmtBR(Msust)}/mês <span style="opacity:0.55;font-size:0.65rem;">(aprox. 1º ano)</span></div>` +
+    `<div class="leg"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#b07020" stroke-width="1.5" stroke-dasharray="4,3"/></svg>PWR 3,5% · ${fmtBR(Mpwr)}/mês</div>`;
+
+  // Build data arrays: accumulation phase then drawdown, connected at prazo
+  const peakIdx = allXs.indexOf(prazo);
+  const mkAccumFull = (path, FVtarget) => allXs.map((x, idx) => {
+    if (x <= prazo) return Math.round(path[x] || 0);
+    return null;
+  });
+  const mkDdFull = (dd, FVtarget) => allXs.map((x, idx) => {
+    if (x < prazo) return null;
+    if (x === prazo) return Math.round(FVtarget);
+    const i = x - prazo;
+    return ddIdxsSet.has(i) ? Math.max(0, Math.round(dd[i] || 0)) : null;
+  });
+
+  const chosenAccum = mkAccumFull(accumChosen, FVfin);
+  const sustAccum   = mkAccumFull(accumSust,   FVsust);
+  const pwrAccum    = mkAccumFull(accumPwr,    FVpwr);
+  const chosenDd    = mkDdFull(ddChosen, FVfin);
+  const sustDd      = mkDdFull(ddSust,   FVsust);
+  const pwrDd       = mkDdFull(ddPwr,    FVpwr);
+
+  // Each series is accum + dd joined at the peak
+  const chosenFull = allXs.map((x, i) => x <= prazo ? chosenAccum[i] : chosenDd[i]);
+  const sustFull   = allXs.map((x, i) => x <= prazo ? sustAccum[i]   : sustDd[i]);
+  const pwrFull    = allXs.map((x, i) => x <= prazo ? pwrAccum[i]    : pwrDd[i]);
+
+  const datasets = [
+    {
+      label: 'PWR 3,5%',
+      data: pwrFull,
+      borderColor: '#b07020',
+      borderWidth: 1.5,
+      borderDash: [5, 3],
+      backgroundColor: 'rgba(176,112,32,0.06)',
+      fill: true, tension: 0.3, pointRadius: 0, spanGaps: false, order: 1
+    },
+    {
+      label: `≈ Sustentável (${(rrR*100).toFixed(2).replace('.',',')}%) — 1º ano`,
+      data: sustFull,
+      borderColor: '#1a7a52',
+      borderWidth: 2,
+      backgroundColor: 'rgba(26,122,82,0.08)',
+      fill: true, tension: 0.3, pointRadius: 0, spanGaps: false, order: 2
+    },
+    {
+      label: `Taxa escolhida (${wR.toFixed(2).replace('.',',')}%)`,
+      data: chosenFull,
+      borderColor: '#e05c2a',
+      borderWidth: 2,
+      backgroundColor: 'rgba(224,92,42,0.08)',
+      fill: true, tension: 0.35, pointRadius: 0, spanGaps: false, order: 3
+    }
+  ];
+
+  const ifLineIdx = allXs.indexOf(prazo);
+  // Line only — no label to avoid borderDash bleed
+  const ifAnnotation = {
+    type: 'line', scaleID: 'x', value: ifLineIdx,
+    borderColor: 'rgba(100,100,100,0.35)', borderWidth: 1
+  };
+
+  // Draw "Aposentadoria" text rotated, directly on canvas
+  const runwayLabelPlugin = {
+    id: 'runwayLabels',
+    afterDraw(chart) {
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      const top = chart.chartArea.top;
+      const bottom = chart.chartArea.bottom;
+      const xPos = xScale.getPixelForValue(ifLineIdx);
+      ctx.save();
+      ctx.fillStyle = 'rgba(100,100,100,0.65)';
+      ctx.font = '8px "Courier New", monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.translate(xPos - 4, (top + bottom) / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('Aposentadoria', 0, 0);
+      ctx.restore();
+    }
+  };
+
+  const canvas = document.getElementById('qp-accumChart');
+  const makeTooltip = (canvas) => makeExternalTooltip(canvas, (pts, dataIndex) => {
+    const rows = [];
+    pts.forEach(p => {
+      if (p.raw != null && p.raw > 0) rows.push({
+        label: p.dataset.label,
+        value: p.raw,
+        color: p.dataset.borderColor
+      });
+    });
+    return rows;
+  });
+
+  if (QPState.runwayChart) { QPState.runwayChart.destroy(); QPState.runwayChart = null; }
+
+  QPState.runwayChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels: xLabels, datasets },
+    plugins: [runwayLabelPlugin],
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false, external: makeTooltip(canvas) },
+        annotation: { annotations: { ifLine: ifAnnotation } }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: chartMuted(), font: { family: 'Courier New', size: 9 },
+            autoSkip: true, maxTicksLimit: 10,
+            callback: (val, idx) => {
+              const x = allXs[idx];
+              if (x === 0) return 'Hoje';
+              if (x === prazo) return `${CUR_MON}/${CUR_YEAR + prazo}`;
+              if (x % 10 === 0) return `${CUR_MON}/${CUR_YEAR + x}`;
+              return '';
+            }
+          },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { color: chartMuted(), font: { family: 'Courier New', size: 10 }, callback: v => fmtShort(v) },
+          grid: { color: chartGrid() }
+        }
+      }
+    }
+  });
+  wireCrosshair(canvas, () => QPState.runwayChart);
+}
+
+function qpRenderPatrimonioChart(mAR, custo, I, rR, rA, prazo, P0, G, chosenWR, rrR) {
+  var rates = [];
+  for (var wr = 1.0; wr <= 12.0; wr = Math.round((wr + 0.25) * 100) / 100) rates.push(wr);
+
+  var annualCost = mAR * 12;
+  var patrimonios = rates.map(function(wr) { return annualCost / (wr / 100); });
+  var aportes = rates.map(function(wr) {
+    var FV = annualCost / (wr / 100);
+    return qpSolveContrib(FV, P0, rA, prazo, G);
+  });
+
+  var sustPct = rrR * 100;
+  var barColors = rates.map(function(wr) {
+    if (wr <= sustPct)     return 'rgba(26,122,82,0.80)';   // sustentável
+    if (wr <= sustPct + 1) return 'rgba(26,74,138,0.75)';   // conservador: até 1pp acima
+    if (wr <= sustPct + 2) return 'rgba(212,136,42,0.80)';  // moderado: até 2pp acima
+    return 'rgba(184,50,50,0.78)';                           // elevado
+  });
+
+  var chosenIdx = rates.reduce(function(b, wr, i) { return Math.abs(wr - chosenWR) < Math.abs(rates[b] - chosenWR) ? i : b; }, 0);
+  var sustIdx   = rates.reduce(function(b, wr, i) { return Math.abs(wr - sustPct)  < Math.abs(rates[b] - sustPct)  ? i : b; }, 0);
+
+  var borderColors = rates.map(function(_, i) { return i === chosenIdx ? 'rgba(20,20,20,0.85)' : 'rgba(0,0,0,0)'; });
+  var borderWidths = rates.map(function(_, i) { return i === chosenIdx ? 2 : 0; });
+
+  var sub = document.getElementById('qp-patrimonioSubtitle');
+  if (sub) {
+    sub.innerHTML =
+      'custo na aposentadoria <strong>' + fmtBR(mAR) + '/mês</strong> · ' +
+      'taxa escolhida <strong>' + chosenWR.toFixed(2).replace('.',',') + '%</strong>: ' +
+      'patrimônio <strong>' + fmtShort(patrimonios[chosenIdx]) + '</strong> · ' +
+      'aporte necessário <strong>' + fmtBR(aportes[chosenIdx]) + '/mês</strong>';
+  }
+
+  var legEl = document.getElementById('qp-patrimonioLegend');
+  if (legEl) legEl.innerHTML =
+    '<div class="leg"><div class="leg-dot" style="background:rgba(26,122,82,0.8)"></div>sustentável (≤' + fmtDec(sustPct,1) + '%)</div>' +
+    '<div class="leg"><div class="leg-dot" style="background:rgba(26,74,138,0.75)"></div>+1pp</div>' +
+    '<div class="leg"><div class="leg-dot" style="background:rgba(212,136,42,0.8)"></div>+2pp</div>' +
+    '<div class="leg"><div class="leg-dot" style="background:rgba(184,50,50,0.78)"></div>elevado</div>' +
+    '<div class="leg" style="margin-left:8px;border-left:1px solid var(--border);padding-left:10px;"><div style="width:9px;height:9px;border:2px solid rgba(20,20,20,0.8);border-radius:2px;flex-shrink:0;margin-right:4px;display:inline-block;"></div>escolhida</div>';
+
+  var canvas = document.getElementById('qp-patrimonioChart');
+  var _chosenIdx = chosenIdx, _aportes = aportes, _patrimonios = patrimonios;
+
+  var makeTooltip = function(canvas) { return makeExternalTooltip(canvas, function(pts, dataIndex) {
+    var i = dataIndex;
+    var wr  = rates[i];
+    var FV  = _patrimonios[i];
+    var M   = _aportes[i];
+    var yr1 = M;
+    var yr3 = M * Math.pow(1 + G/100, 2);
+    var yr5 = M * Math.pow(1 + G/100, 4);
+    var diff = M - _aportes[_chosenIdx];
+    var rows = [
+      { label: 'Taxa de retirada', raw: wr.toFixed(2).replace('.',',') + '%', color: barColors[i] },
+      { separator: true },
+      { label: 'Patrimônio necessário', value: FV, bold: true },
+      { label: 'Custo anual na aposentadoria', value: annualCost },
+      { separator: true },
+      { label: 'Aporte hoje (1º mês)', value: yr1, bold: true },
+      { label: 'Aporte em 3 anos (' + G + '% a.a.)', value: Math.round(yr3) },
+      { label: 'Aporte em 5 anos (' + G + '% a.a.)', value: Math.round(yr5) }
+    ];
+    if (i !== _chosenIdx) {
+      rows.push({ separator: true });
+      rows.push({ label: diff > 0 ? '▲ acima da taxa escolhida' : '▼ abaixo da taxa escolhida', value: Math.abs(diff) });
+    }
+    return rows;
+  }); };
+
+  var sustLine = { type:'line', scaleID:'x', value:sustIdx, borderColor:'rgba(26,122,82,0.5)', borderWidth:1.5, borderDash:[4,3] };
+
+  var patrimonioLabelPlugin = {
+    id: 'patrimonioLabels',
+    afterDraw: function(chart) {
+      var ctx = chart.ctx;
+      var xScale = chart.scales.x;
+      var top = chart.chartArea.top;
+      var xSust = xScale.getPixelForValue(sustIdx);
+      ctx.save();
+      ctx.fillStyle = 'rgba(26,122,82,0.85)';
+      ctx.font = '9px "Courier New", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('≈ sustentável (1º ano)', xSust, top + 4);
+      ctx.restore();
+    }
+  };
+
+  if (QPState.patrimonioChart) { QPState.patrimonioChart.destroy(); QPState.patrimonioChart = null; }
+
+  QPState.patrimonioChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: rates.map(function(r) { return r.toFixed(2).replace('.',',') + '%'; }),
+      datasets: [{ data: patrimonios, backgroundColor: barColors, borderColor: borderColors, borderWidth: borderWidths, borderRadius: 3, borderSkipped: false }]
+    },
+    plugins: [patrimonioLabelPlugin],
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false, external: makeTooltip(canvas) },
+        annotation: { annotations: { sustLine: sustLine } }
+      },
+      scales: {
+        x: { ticks: { color: chartMuted(), font: { family: 'Courier New', size: 9 }, maxRotation: 45 }, grid: { display: false } },
+        y: {
+          ticks: { color: chartMuted(), font: { family: 'Courier New', size: 10 }, callback: function(v) { return fmtShort(v); } },
+          grid: { color: chartGrid() },
+          title: { display: true, text: 'patrimônio necessário', color: chartMuted(), font: { family: 'Courier New', size: 9 } }
+        }
+      }
+    }
+  });
+  wireCrosshair(canvas, function() { return QPState.patrimonioChart; });
+}
+
+function qpMkChart(canvasId,datasets,labels,getRef,setRef){
+  const canvas=document.getElementById(canvasId),ex=getRef();
+  if(ex){ex.data.labels=labels;ex.data.datasets=datasets;ex.update('none');return ex;}
+  const ch=new Chart(canvas,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{enabled:false,external:makeExternalTooltip(canvas, pts=>{
+    const v={}; pts.forEach(p=>{v[p.dataset.label]=p.raw;});
+    return datasets.filter(d=>v[d.label]!=null&&v[d.label]>0).map(d=>({label:d.label,value:v[d.label],color:d.borderColor}));
+  })}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:10,color:chartMuted(),font:{family:'Courier New',size:10}},grid:{display:false}},y:{ticks:{color:chartMuted(),callback:v=>fmtShort(v),font:{family:'Courier New',size:10}},grid:{color:chartGrid()}}}}});
+  wireCrosshair(canvas,getRef); setRef(ch); return ch;
+}
+
+// ── Sustainability card builder ────────────────────────────────────────────
+// Calculates the "real sustainability" card based on actual user parameters.
+// The card answers: "what patrimony ensures saques never exceed real returns?"
+// FVsust = custo_anual_real / rrR  (when rrR > 0)
+// PWR 3.5% is shown as a secondary reference, not the primary premise.
+function qpBuildSustCard(mAR, defl, rrR, rR, I, rA, prazo, P0, G) {
+  const custo_anual_real = mAR * 12;
+  const rrRpct = rrR * 100;
+  const growth = G !== undefined ? G : I;
+
+  if (rrR <= 0) {
+    return `<div class="answer-card perp">
+      <div class="ac-label">Ponto de sustentabilidade real</div>
+      <div class="ac-scenario" style="color:var(--red)">Impossível com esses parâmetros</div>
+      <div class="ac-patrimonio" style="color:var(--red)">∞</div>
+      <div class="ac-real" style="color:var(--red)">juro real de ${rrRpct.toFixed(1).replace('.',',')}% — principal sempre consumido</div>
+      <div class="ac-divider"></div>
+      <div class="ac-aporte-label">motivo</div>
+      <div class="ac-aporte" style="font-size:0.9rem;color:var(--red)">retorno real ≤ 0%</div>
+      <div class="ac-rate" style="color:var(--red)">${rR}% de retorno e ${I}% de inflação: o patrimônio perde valor em termos reais mesmo sem nenhuma retirada</div>
+      <div class="ac-depletion" style="color:var(--muted)">nenhum valor de patrimônio garante perpetuidade</div>
+    </div>`;
+  }
+
+  const FVsust = custo_anual_real / rrR;
+  const FVpwr  = custo_anual_real / 0.035;
+  const sustColor = rrRpct >= 3.5 ? 'var(--green)' : 'var(--amber)';
+
+  // Depletion for FVsust
+  const sustDepY = qpYearsUntilDepletion(FVsust, mAR, I, rR);
+  let sustDurHtml;
+  if (sustDepY === null) {
+    sustDurHtml = `<div class="ac-depletion" style="color:var(--green)">∞ &nbsp;não se esgota com esses parâmetros</div>`;
+  } else {
+    const depColor = sustDepY >= 60 ? 'var(--green)' : sustDepY >= 35 ? sustColor : 'var(--red)';
+    const depIcon  = sustDepY >= 60 ? '∞ aprox.' : sustDepY >= 35 ? '~' : '⚠';
+    sustDurHtml = `<div class="ac-depletion" style="color:${depColor}">${depIcon} ${sustDepY} anos &nbsp;até esgotar</div>`;
+  }
+
+  // Depletion for PWR 3.5% — this is what makes it "safer"
+  const pwrDepY = qpYearsUntilDepletion(FVpwr, mAR, I, rR);
+  const pwrDurStr = pwrDepY === null ? '∞ não se esgota' : `~${pwrDepY} anos até esgotar`;
+  const pwrDurColor = pwrDepY === null || pwrDepY >= 60 ? 'var(--green)' : pwrDepY >= 35 ? 'var(--amber)' : 'var(--red)';
+
+  // Contributions
+  let aporteHtml = '';
+  if (rA && prazo) {
+    const Msust = qpSolveContrib(FVsust, P0 || 0, rA, prazo, growth);
+    const Mpwr  = qpSolveContrib(FVpwr,  P0 || 0, rA, prazo, growth);
+    aporteHtml = `
+    <div class="ac-divider"></div>
+    <div class="ac-aporte-label">aporte mensal necessário (${prazo} anos, ${rA}% a.a.)</div>
+    <div class="ac-aporte" style="color:${sustColor}">${fmtBR(Msust)}/mês</div>
+    ${sustDurHtml}
+    <div class="ac-divider" style="margin-top:0.85rem;"></div>
+    <div class="ac-aporte-label" style="color:var(--muted);">para maior segurança — PWR 3,5% ${PWR_TIP}</div>
+    <div style="font-size:0.95rem;font-weight:bold;color:var(--muted);font-family:'Courier New',monospace;margin-bottom:2px;">${fmtBR(Mpwr)}/mês &nbsp;<span style="font-weight:normal;font-size:0.72rem;">→ ${fmtShort(FVpwr)}</span></div>
+    <div class="ac-rate" style="color:${pwrDurColor};font-weight:bold;">${pwrDurStr}</div>`;
+  }
+
+  return `<div class="answer-card perp">
+    <div class="ac-label">Equilíbrio no 1º ano <span style="font-size:0.58rem;opacity:0.5;font-weight:normal;">(aprox.)</span></div>
+    <div class="ac-scenario" style="color:${sustColor}">retorno real: ${rrRpct.toFixed(2).replace('.',',')}% ao ano</div>
+    <div class="ac-patrimonio">~${fmtShort(FVsust)}</div>
+    <div class="ac-real">${fmtShort(FVsust/defl)} em reais de hoje · ${rR}% retorno · ${I}% inflação</div>
+    ${aporteHtml}
+  </div>`;
+}
+
+let _qpDebounceTimer = null;
+function qpUpdateDebounced() {
+  if (!QPState.rendered) return;
+  clearTimeout(_qpDebounceTimer);
+  _qpDebounceTimer = setTimeout(qpUpdate, 40);
+}
+
+function qpUpdate(){
+  QP_CONTROLS[QPState.currentMode].forEach(c=>{
+    const lbl=document.getElementById('qp-'+c.id+'lbl');
+    if(lbl&&!lbl.classList.contains('editing')){lbl.textContent=qpFmtC(c,qpGetV(c.id));if(c.inflacao||c.red)lbl.style.color='var(--red)';else if(c.rate)lbl.style.color='var(--green)';else if(c.vol)lbl.style.color='var(--amber)';if(c.prazo)setPrazoThumbColor('qp-'+c.id);}
+  });
+  qpRefreshGrowthColor();
+  const vals=qpGetVals(),rA=vals.qRA??15,rR=vals.qRR??10,wR=vals.qWR??5,I=vals.qI??5,retiro=vals.qRetiro??30;
+  const G=vals.qG!==undefined?vals.qG:I;
+  const explanations={
+    plan:`Defina seu custo de vida e os parâmetros. O card da esquerda mostra quanto poupar para a taxa escolhida. O da direita mostra o patrimônio mínimo para que as retiradas não consumam o principal — onde, no 1º ano, a retirada ≈ retorno real (aproximação de primeiro ano; com retiradas corrigidas pela inflação, o patrimônio se reduz gradualmente ao longo do tempo).`,
+    years:`Defina seu aporte mensal inicial e custo de vida desejado. A calculadora descobre em quantos anos você atinge o patrimônio necessário para a taxa de retirada escolhida.`
+  };
+  document.getElementById('qp-modeExpl').innerHTML=explanations[QPState.currentMode];
+  const rrR=rReal(rR,I);
+
+  if(QPState.currentMode==='plan'){
+    const prazo=vals.qPrazo??30,P0=vals.qP0??0,custo=vals.qCusto??20000;
+    const defl=Math.pow(1+I/100,prazo),mAR=custo*defl;
+    const FVfin=mAR*12/(wR/100);
+    const FVsust=rrR>0?(mAR*12)/rrR:null;
+    const Mfin=qpSolveContrib(FVfin,P0,rA,prazo,G);
+    const depY=qpYearsUntilDepletion(FVfin,mAR,I,rR);
+    const col=rateColor(wR,rrR);
+    const depEl=depY===null?`<div class="ac-depletion" style="color:var(--green)">∞ &nbsp;não se esgota com esses parâmetros</div>`:`<div class="ac-depletion" style="color:${col}">~ ${depY} anos &nbsp;até esgotar (${rR}% juros · ${I}% inflação)</div>`;
+    const leftCard=`<div class="answer-card finite"><div class="ac-label">retirada de ${wR.toFixed(2).replace('.', ',')}% a.a.</div><div class="ac-scenario">${scenarioName(wR,rrR)}</div><div class="ac-patrimonio">${fmtShort(FVfin)}</div><div class="ac-real">${fmtShort(FVfin/defl)} em R$ de hoje</div><div class="ac-divider"></div><div class="ac-aporte-label">aporte mensal (1º mês)</div><div class="ac-aporte">${fmtBR(Mfin)}/mês</div><div class="ac-rate" style="color:${col}">${rateDesc(wR,rrR)}</div>${depEl}</div>`;
+    document.getElementById('qp-answerGrid').innerHTML=leftCard+qpBuildSustCard(mAR,defl,rrR,rR,I,rA,prazo,P0,G);
+    const t=({perpetua:{bg:'var(--green-light)',border:'var(--green)',color:'var(--green)',icon:'✓'},conservadora:{bg:'var(--blue-light)',border:'var(--blue)',color:'var(--blue)',icon:'●'},moderada:{bg:'var(--amber-light)',border:'var(--amber)',color:'var(--amber)',icon:'▲'},elevada:{bg:'var(--red-light)',border:'var(--red)',color:'var(--red)',icon:'⚠'}})[rateLevel(wR,rrR)];
+    const sb=document.getElementById('qp-sustainBanner');
+    sb.style.cssText=`background:${t.bg};border:1px solid ${t.border};color:${t.color}`;
+    const gDesc = G === 0 ? 'aporte fixo (sem reajuste)' : G === I ? `aporte reajustado pela inflação (${G}% a.a.)` : `aporte cresce ${G}% a.a.`;
+    sb.innerHTML=`${t.icon} Retirada <strong>${wR.toFixed(2).replace('.', ',')}%</strong> · retorno real <strong>${(rrR*100).toFixed(1).replace('.', ',')}%</strong> · ${rateDesc(wR,rrR)}. ${gDesc}.`;
+    const rrAccum=rReal(rA,I)*100,lvl=rateLevel(wR,rrR),rCls=(lvl==='perpetua'||lvl==='conservadora')?'green':lvl==='moderada'?'amber':'red';
+    document.getElementById('qp-statsRow').innerHTML=[{lbl:'Patrimônio alvo',val:fmtShort(FVfin),sub:fmtShort(FVfin/defl)+' em R$ de hoje',cls:''},{lbl:'Retorno real — acumulação',val:rrAccum.toFixed(1).replace('.', ',')+'%',sub:rA+'% nom. − '+I+'% infl.',cls:rrAccum>0?'green':'red'},{lbl:'Retorno real — retirada',val:(rrR*100).toFixed(1).replace('.', ',')+'%',sub:scenarioName(wR,rrR),cls:rCls},{lbl:'Custo na aposentadoria',val:fmtBR(mAR)+'/mês',sub:`${CUR_MON}/${CUR_YEAR+prazo}`,cls:''}].map(s=>`<div class="stat ${s.cls}"><div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div></div>`).join('');
+    // Runway chart: full life arc
+    const sustWRpct = rrR > 0 ? rrR * 100 : wR;
+    qpRefreshWRColor(wR, rrR);
+    qpRenderScenarioCompChart(FVfin, mAR, custo, I, rR, prazo, retiro, wR, rrR);
+    qpRenderRunwayChart(P0, Mfin, rA, G, prazo, FVfin, mAR, custo, I, rR, retiro, wR, rrR);
+    qpRenderLongevityChart(FVfin, mAR, custo, I, rR, prazo, retiro, wR, sustWRpct);
+    qpRenderPatrimonioChart(mAR, custo, I, rR, rA, prazo, P0, G, wR, rrR);
+    document.getElementById('qp-scenarioCompWrap').style.display = '';
+    document.getElementById('qp-longevityWrap').style.display = '';
+    document.getElementById('qp-patrimonioWrap').style.display = '';
+    document.getElementById('qp-accumWrap').style.display = '';
+    document.getElementById('qp-drawdownWrap').style.display = 'none';
+    document.getElementById('qp-chartSectionLabel').textContent = 'Trajetória';
+
+  } else {
+    const P0=vals.qP0??0,M=vals.qM??0,custo=vals.qCusto??20000,rMon=Math.pow(1+rA/100,1/12)-1;
+    if(M===0&&P0===0){document.getElementById('qp-answerGrid').innerHTML=`<div style="grid-column:1/-1;font-family:'Courier New',monospace;font-size:0.85rem;color:var(--red);padding:1rem;background:var(--red-light);border-radius:10px;">Defina um aporte mensal ou um patrimônio inicial para calcular.</div>`;document.getElementById('qp-sustainBanner').innerHTML='';document.getElementById('qp-statsRow').innerHTML='';return;}
+    let b=P0,found=null;
+    for(let y=1;y<=200;y++){
+      const mcy=M*Math.pow(1+G/100,y-1);
+      for(let m=0;m<12;m++)b=b*(1+rMon)+mcy;
+      const defl=Math.pow(1+I/100,y),mAR=custo*defl,FVf=mAR*12/(wR/100);
+      if(b>=FVf){found={y,b,FVfin:FVf,mAR,defl};break;}
+    }
+    if(!found){document.getElementById('qp-answerGrid').innerHTML=`<div style="grid-column:1/-1;font-family:'Courier New',monospace;font-size:0.85rem;color:var(--red);padding:1rem;background:var(--red-light);border-radius:10px;">Com esses parâmetros, o patrimônio nunca atinge o objetivo em 200 anos. Aumente o aporte ou a taxa de juros.</div>`;document.getElementById('qp-sustainBanner').innerHTML='';document.getElementById('qp-statsRow').innerHTML='';return;}
+    const{y,FVfin,mAR,defl}=found;
+    const depY=qpYearsUntilDepletion(FVfin,mAR,I,rR),col=rateColor(wR,rrR);
+    const depEl=depY===null?`<div class="ac-depletion" style="color:var(--green)">∞ &nbsp;não se esgota com esses parâmetros</div>`:`<div class="ac-depletion" style="color:${col}">patrimônio dura ~${depY} anos (${rR}% juros · ${I}% infl.)</div>`;
+    const leftCard=`<div class="answer-card finite"><div class="ac-label">${scenarioName(wR,rrR)} · retirada de ${wR.toFixed(2).replace('.', ',')}%</div><div class="ac-years-label">aposentadoria em</div><div class="ac-years">${y} <span>anos</span></div><div class="ac-real">${CUR_MON}/${CUR_YEAR+y} · patrimônio: ${fmtShort(FVfin)} (${fmtShort(FVfin/defl)} hoje)</div><div class="ac-divider"></div><div class="ac-aporte-label">custo de vida na aposentadoria</div><div class="ac-aporte">${fmtBR(mAR)}/mês</div><div class="ac-rate" style="color:${col}">${rateDesc(wR,rrR)}</div>${depEl}</div>`;
+    document.getElementById('qp-answerGrid').innerHTML=leftCard+qpBuildSustCard(mAR,defl,rrR,rR,I,rA,y,P0,G);
+    const t=({perpetua:{bg:'var(--green-light)',border:'var(--green)',color:'var(--green)',icon:'✓'},conservadora:{bg:'var(--blue-light)',border:'var(--blue)',color:'var(--blue)',icon:'●'},moderada:{bg:'var(--amber-light)',border:'var(--amber)',color:'var(--amber)',icon:'▲'},elevada:{bg:'var(--red-light)',border:'var(--red)',color:'var(--red)',icon:'⚠'}})[rateLevel(wR,rrR)];
+    const sb=document.getElementById('qp-sustainBanner');sb.style.cssText=`background:${t.bg};border:1px solid ${t.border};color:${t.color}`;
+    sb.innerHTML=`${t.icon} Retirada <strong>${wR.toFixed(2).replace('.', ',')}%</strong> · retorno real <strong>${(rrR*100).toFixed(1).replace('.', ',')}%</strong> · ${rateDesc(wR,rrR)}.`;
+    const rrAccum=rReal(rA,I)*100,lvl=rateLevel(wR,rrR),rCls=(lvl==='perpetua'||lvl==='conservadora')?'green':lvl==='moderada'?'amber':'red';
+    document.getElementById('qp-statsRow').innerHTML=[{lbl:'Patrimônio alvo',val:fmtShort(FVfin),sub:fmtShort(FVfin/defl)+' em R$ de hoje',cls:''},{lbl:'Retorno real — acumulação',val:rrAccum.toFixed(1).replace('.', ',')+'%',sub:rA+'% nom. − '+I+'% infl.',cls:rrAccum>0?'green':'red'},{lbl:'Retorno real — retirada',val:(rrR*100).toFixed(1).replace('.', ',')+'%',sub:scenarioName(wR,rrR),cls:rCls},{lbl:'Anos para aposentadoria',val:y+' anos',sub:CUR_MON+'/'+(CUR_YEAR+y),cls:'green'}].map(s=>`<div class="stat ${s.cls}"><div class="lbl">${s.lbl}</div><div class="val">${s.val}</div><div class="sub">${s.sub}</div></div>`).join('');
+    // Runway chart + longevidade chart
+    const sustWRpctY = rrR > 0 ? rrR * 100 : wR;
+    qpRefreshWRColor(wR, rrR);
+    qpRenderScenarioCompChart(FVfin, mAR, custo, I, rR, y, retiro, wR, rrR);
+    qpRenderRunwayChart(P0, M, rA, G, y, FVfin, mAR, custo, I, rR, retiro, wR, rrR);
+    qpRenderLongevityChart(FVfin, mAR, custo, I, rR, y, retiro, wR, sustWRpctY);
+    qpRenderPatrimonioChart(mAR, custo, I, rR, rA, y, P0, G, wR, rrR);
+    document.getElementById('qp-scenarioCompWrap').style.display = '';
+    document.getElementById('qp-longevityWrap').style.display = '';
+    document.getElementById('qp-patrimonioWrap').style.display = '';
+    document.getElementById('qp-accumWrap').style.display = '';
+    document.getElementById('qp-drawdownWrap').style.display = 'none';
+    document.getElementById('qp-chartSectionLabel').textContent = 'Trajetória';
+  }
+
+  document.getElementById('qp-sensLabel').textContent=QPState.currentMode==='plan'?'Sensibilidade — aporte necessário por taxa de juros':'Sensibilidade — anos para aposentadoria por taxa de juros';
+  const rates=[8,10,12,15,18,22];
+  const results=rates.map(r=>{
+    let val;
+    if(QPState.currentMode==='plan'){
+      const sensPrazo = vals.qPrazo ?? 30;
+      const sensWR    = vals.qWR    ?? 5;
+      if(sensWR === 0){val=0;}else{
+        const cost=( vals.qCusto ?? 0)*12*Math.pow(1+I/100,sensPrazo);
+        const FV=cost/(sensWR/100);
+        val=qpSolveContrib(FV, vals.qP0 ?? 0, r, sensPrazo, G);
+      }
+    } else {
+      const rm=Math.pow(1+r/100,1/12)-1;
+      let b2=vals.qP0??0;
+      val=null;
+      for(let y=1;y<=200;y++){
+        const mcy=(vals.qM??0)*Math.pow(1+G/100,y-1);
+        for(let m=0;m<12;m++)b2=b2*(1+rm)+mcy;
+        const sensWR2 = vals.qWR ?? 5;
+        if(sensWR2 === 0){val=201;break;}
+        const FVf=(vals.qCusto??0)*12*Math.pow(1+I/100,y)/(sensWR2/100);
+        if(b2>=FVf){val=y;break;}
+      }
+    }
+    return{r,val:val!==null?val:(QPState.currentMode==='plan'?0:201)};
+  });
+  const vs=results.map(x=>x.val).filter(v=>v>0&&isFinite(v));
+  const minV=vs.length?Math.min(...vs):0,maxV=vs.length?Math.max(...vs):1,rng=maxV-minV||1;
+  const maxBar=Math.max(...results.map(x=>Math.abs(x.val)||1).filter(isFinite));
+  document.getElementById('qp-sensitivityWrap').innerHTML=results.map(({r,val})=>{
+    const pos=(val-minV)/rng,color=pos<=0.25?'var(--green)':pos>=0.75?'var(--red)':'var(--amber)';
+    const bw=Math.min(100,(isFinite(val)&&val>0?val:0)/maxBar*100);
+    const fmt=QPState.currentMode==='plan'?(fmtBR(val)+'/mês'):(val<=200?val+' anos':'>200 anos');
+    return `<div class="sens-row"><span style="color:var(--muted)">${r}% a.a.</span><div class="sens-bar-bg"><div class="sens-bar-fill" style="width:${bw}%;background:${color}"></div></div><span style="font-weight:bold;color:${color};text-align:right">${fmt}</span></div>`;
+  }).join('');
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+loadState();            // Restore sliders from localStorage
+// Initialize colored thumbs for prazo sliders
+['sim-sY','mc-sY'].forEach(setPrazoThumbColor);
+setGrowthColor('sim-sG','sim-lG',getV('sim-sG'),getV('sim-sI'));
+setGrowthColor('mc-sG','mc-lG',getV('mc-sG'),getV('mc-sI'));
+qpBuildControls();
+simUpdate();            // Simulador — runs immediately (first visible panel)
+// MC and QP boot lazily on first panel activation
+</script>
+</body>
+</html>

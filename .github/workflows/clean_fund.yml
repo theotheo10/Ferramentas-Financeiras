@@ -1,0 +1,39 @@
+name: Limpar fundo do histórico
+
+on:
+  workflow_dispatch:
+    inputs:
+      cnpjs:
+        description: |
+          CNPJs dos fundos a remover do history.json (separados por espaço).
+          Exemplo: 29.726.133/0001-21
+          Exemplo múltiplos: 29.726.133/0001-21 35.828.684/0001-07
+          
+          Use quando um fundo tiver histórico corrompido e precisar de backfill completo.
+          Após remover, execute o workflow "Update fund data & deploy" para regenerar.
+        required: true
+
+jobs:
+  clean-fund:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Limpar fundo(s) do history.json
+        run: python scripts/clean_fund_history.py ${{ github.event.inputs.cnpjs }}
+
+      - name: Commit e push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/history.json docs/data.json
+          git diff --staged --quiet || git commit -m "chore: remove fundo(s) do history.json para backfill"
+          git pull --rebase origin main
+          git push
