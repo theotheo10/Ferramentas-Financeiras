@@ -569,6 +569,9 @@ def fetch_ntnb() -> dict:
                 raw = resp.read().decode("latin-1", errors="replace")
 
             lines = raw.splitlines()
+            # Log primeiras 8 linhas para ver dados reais
+            for l in lines[:8]:
+                print(f"  DBG: {repr(l[:150])}")
             # Formato real confirmado:
             # Titulo@Data Referencia@Codigo SELIC@Data Base/Emissao@Data Vencimento@
             # Tx. Compra@Tx. Venda@Tx. Indicativas@PU@Desvio pad@...
