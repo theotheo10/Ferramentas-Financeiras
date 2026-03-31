@@ -735,8 +735,9 @@ def fetch_ntnb() -> dict:
 
 def fetch_ipca_focus() -> dict:
     """
-    Busca expectativa de IPCA.
-    Fontes: 1) BCB SGS 13522 (rápido), 2) BCB Olinda Focus (bônus LP), 3) fallback.
+    Busca expectativa de IPCA do Focus via BCB Olinda.
+    Campos reais: DataReferencia (ano como string), Mediana.
+    LP = ano mais distante disponível (tipicamente hoje+4 anos).
     """
     FALLBACK = {
         "ipca_12m":         4.8,
@@ -745,88 +746,46 @@ def fetch_ipca_focus() -> dict:
         "ipca_source":      "fallback",
     }
 
-    today_d    = datetime.date.today()
-    today_year = today_d.year
+    today_year = datetime.date.today().year
 
-    # ── Fonte 1: BCB SGS 13522 via /ultimos/1 ────────────────────────────────
     try:
-        url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/1?formato=json"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        if data:
-            ipca_12m = float(data[-1]["valor"])
-            ipca_lp  = FALLBACK["ipca_longo_prazo"]
-            # Tenta Olinda para LP com timeout curto
-            try:
-                url2 = ("https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
-                        "ExpectativasMercadoAnuais"
-                        "?%24filter=Indicador%20eq%20%27IPCA%27%20and%20baseCalculo%20eq%20%270%27"
-                        "&%24orderby=Data%20desc&%24top=20&%24format=json&%24select=Data%2CAno%2CMediana")
-                req2 = urllib.request.Request(url2, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-                with urllib.request.urlopen(req2, timeout=8) as resp2:
-                    raw2 = json.loads(resp2.read())
-                records = raw2.get("value") or []
-                if records:
-                    from collections import defaultdict
-                    by_ano: dict = defaultdict(dict)
-                    for r in records:
-                        if r.get("Data") and r.get("Ano") and r.get("Mediana") is not None:
-                            by_ano[r["Data"]][int(r["Ano"])] = float(r["Mediana"])
-                    if by_ano:
-                        latest = by_ano[max(by_ano.keys())]
-                        lp = latest.get(today_year+5) or latest.get(today_year+4) or latest.get(today_year+3)
-                        if lp:
-                            ipca_lp = round(lp, 2)
-                            print(f"  Focus IPCA Olinda LP={ipca_lp}%")
-            except Exception:
-                pass
-            print(f"  Focus IPCA BCB SGS: 12M={ipca_12m:.2f}% LP={ipca_lp}%")
-            return {
-                "ipca_12m":         round(ipca_12m, 2),
-                "ipca_longo_prazo": ipca_lp,
-                "ipca_fetched_at":  data[-1]["data"],
-                "ipca_source":      "bcb_sgs",
-            }
-    except Exception as e:
-        print(f"  ✗ Focus IPCA BCB SGS falhou: {e}")
-
-    # ── Fonte 2: Olinda Focus completo ────────────────────────────────────────
-    olinda_url = ("https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
-                  "ExpectativasMercadoAnuais"
-                  "?%24filter=Indicador%20eq%20%27IPCA%27%20and%20baseCalculo%20eq%20%270%27"
-                  "&%24orderby=Data%20desc&%24top=50&%24format=json&%24select=Data%2CAno%2CMediana")
-    try:
-        req = urllib.request.Request(olinda_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        url = ("https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
+               "ExpectativasMercadoAnuais"
+               "?%24filter=Indicador%20eq%20%27IPCA%27"
+               "&%24orderby=Data%20desc&%24top=20&%24format=json")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = json.loads(resp.read())
-        records = raw.get("value") or []
-        if records:
-            from collections import defaultdict
-            by_date_ano: dict = defaultdict(dict)
-            for r in records:
-                d = r.get("Data",""); ano = r.get("Ano"); med = r.get("Mediana")
-                if d and ano and med is not None:
-                    by_date_ano[d][int(ano)] = float(med)
-            if by_date_ano:
-                latest_date = max(by_date_ano.keys())
-                by_ano      = by_date_ano[latest_date]
-                ipca_12m    = by_ano.get(today_year+1) or by_ano.get(today_year)
-                ipca_lp     = by_ano.get(today_year+5) or by_ano.get(today_year+4) or by_ano.get(today_year+3)
-                if ipca_12m:
-                    result = {
-                        "ipca_12m":         round(ipca_12m, 2),
-                        "ipca_longo_prazo": round(ipca_lp, 2) if ipca_lp else FALLBACK["ipca_longo_prazo"],
-                        "ipca_fetched_at":  latest_date,
-                        "ipca_source":      "focus",
-                    }
-                    print(f"  Focus IPCA Olinda: 12M={result['ipca_12m']}% LP={result['ipca_longo_prazo']}%")
-                    return result
-    except Exception as e:
-        print(f"  ✗ Focus IPCA Olinda: {e}")
 
-    print("  ✗ Focus IPCA: todas as fontes falharam — usando fallback")
-    return FALLBACK
+        records = raw.get("value") or []
+        if not records:
+            raise ValueError("Olinda retornou vazio")
+
+        latest_date = max(r["Data"] for r in records)
+        by_ano = {int(r["DataReferencia"]): float(r["Mediana"])
+                  for r in records
+                  if r["Data"] == latest_date and r.get("Mediana") is not None}
+
+        ipca_12m = by_ano.get(today_year) or by_ano.get(today_year + 1)
+        # LP = ano mais distante disponível
+        ipca_lp  = by_ano.get(max(by_ano.keys())) if by_ano else None
+
+        if not ipca_12m:
+            raise ValueError(f"Sem dados para {today_year}: {sorted(by_ano.keys())}")
+
+        result = {
+            "ipca_12m":         round(ipca_12m, 2),
+            "ipca_longo_prazo": round(ipca_lp, 2) if ipca_lp else FALLBACK["ipca_longo_prazo"],
+            "ipca_fetched_at":  latest_date,
+            "ipca_source":      "focus",
+        }
+        print(f"  Focus IPCA: 12M={result['ipca_12m']}% LP={result['ipca_longo_prazo']}% (ref. {latest_date})")
+        return result
+
+    except Exception as e:
+        print(f"  ✗ Focus IPCA falhou: {e} — usando fallback")
+        return FALLBACK
+
 
 def _legacy_max_dd(rets: list) -> float:
     """Fallback para maxDrawdown caso compute_fund_metrics retorne vazio."""
