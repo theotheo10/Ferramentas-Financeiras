@@ -569,15 +569,10 @@ def fetch_ntnb() -> dict:
                 raw = resp.read().decode("latin-1", errors="replace")
 
             lines = raw.splitlines()
-            # Log primeiras 8 linhas para ver dados reais
-            for l in lines[:8]:
-                print(f"  DBG: {repr(l[:150])}")
-            # Formato real confirmado:
-            # Titulo@Data Referencia@Codigo SELIC@Data Base/Emissao@Data Vencimento@
-            # Tx. Compra@Tx. Venda@Tx. Indicativas@PU@Desvio pad@...
+            # Formato real ANBIMA:
             # col 0: Titulo (ex: "NTN-B")
-            # col 4: Data Vencimento (DD/MM/AAAA)
-            # col 7: Tx. Indicativas (taxa em %)
+            # col 4: Data Vencimento formato AAAAMMDD (ex: 20350515)
+            # col 7: Tx. Indicativas com vírgula decimal (ex: 7,6926)
 
             titles = []
             for line in lines:
@@ -592,9 +587,8 @@ def fetch_ntnb() -> dict:
                 if "PRINCIPAL" in tipo.upper():
                     continue
                 try:
-                    venc_raw = parts[4]  # Data Vencimento
-                    dv, mv, yv = venc_raw.split("/")
-                    venc_iso = f"{yv.zfill(4)}-{mv.zfill(2)}-{dv.zfill(2)}"
+                    venc_raw = parts[4]  # AAAAMMDD
+                    venc_iso = f"{venc_raw[:4]}-{venc_raw[4:6]}-{venc_raw[6:8]}"
                     datetime.date.fromisoformat(venc_iso)  # valida
                     taxa = float(parts[7].replace(",", "."))  # Tx. Indicativas
                     if 2.0 < taxa < 20.0:
