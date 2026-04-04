@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>IBOV Breadth — Ferramentas Financeiras</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+<style>
+/* ── Design tokens — identical to Ferramentas index/fundos/simulador ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #f7f6f2;
+  --surface:      #ffffff;
+  --border:       rgba(0,0,0,0.08);
+  --border-str:   rgba(0,0,0,0.14);
+  --text:         #1a1916;
+  --muted:        #7a7870;
+  --green:        #1a7a52;
+  --green-light:  #e8f5ee;
+  --accent:       #e05c2a;
+  /* breadth MA colours — kept from original (semantically meaningful) */
+  --c20:          #2d9e5e;
+  --c50:          #c8960a;
+  --c200:         #7c6af7;
+}
+
+[data-theme=dark] {
+  --bg:           #141412;
+  --surface:      #1e1d1a;
+  --border:       rgba(255,255,255,0.09);
+  --border-str:   rgba(255,255,255,0.15);
+  --text:         #e8e6e0;
+  --muted:        #7a7870;
+  --green:        #2db87a;
+  --green-light:  #0d2e1e;
+  --accent:       #f07040;
+  --c20:          #3dffa0;
+  --c50:          #f7c948;
+  --c200:         #9d8ff8;
+}
+
+body {
+  font-family: 'Georgia', serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem 1.5rem 4rem;
+  max-width: 900px;
+  margin: 0 auto;
+  transition: background 0.2s, color 0.2s;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar — identical to index.html ── */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.wordmark {
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.wordmark:hover { color: var(--text); }
+.top-bar-right { display: flex; align-items: center; gap: 0.75rem; }
+.theme-btn {
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.theme-btn:hover { border-color: var(--text); color: var(--text); }
+
+/* ── Module header ── */
+.module-tag {
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.module-title {
+  font-size: 1.9rem;
+  font-weight: normal;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin-bottom: 0.5rem;
+}
+.module-meta {
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.meta-sep { color: var(--border-str); }
+
+/* ── Loading ── */
+#loading {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 200; gap: 0.75rem;
+  color: var(--muted);
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+}
+.spinner {
+  width: 24px; height: 24px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading.hidden { display: none; }
+
+/* ── Error ── */
+.error {
+  display: none;
+  margin-bottom: 1.5rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid rgba(200,60,40,0.25);
+  border-radius: 8px;
+  color: #c83c28;
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  background: rgba(200,60,40,0.04);
+}
+[data-theme=dark] .error { color: #ff6b7a; background: rgba(200,60,40,0.08); }
+.error.on { display: block; }
+
+/* ══════════════════════════════════════
+   HERO CARD — score + barra + MAs
+══════════════════════════════════════ */
+.hero {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem 2rem 1.75rem;
+  margin-bottom: 1rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2.5rem;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: var(--hero-color, var(--accent));
+  transition: background 0.6s;
+}
+
+.hero-eyebrow {
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+.hero-score {
+  font-size: 3.6rem;
+  font-weight: normal;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--hero-color, var(--text));
+  transition: color 0.6s;
+  margin-bottom: 0.4rem;
+}
+.hero-label {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: var(--text);
+  margin-bottom: 1.25rem;
+  line-height: 1.4;
+}
+
+/* score bar */
+.score-bar-wrap { position: relative; margin-bottom: 0.5rem; }
+.score-bar-track {
+  height: 5px; border-radius: 3px;
+  background: linear-gradient(to right,
+    #1a4d2e 0%,  #2d7a45 15%, #5cb85c 30%,
+    #8ac926 42%, #f7c948 50%,
+    #f0974a 62%, #e05c2a 72%,
+    #c0392b 83%, #6b0000 100%);
+  position: relative;
+}
+.score-bar-needle {
+  position: absolute; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--text);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.15);
+  transition: left 0.6s cubic-bezier(.4,0,.2,1);
+}
+.score-bar-labels {
+  display: flex; justify-content: space-between;
+  margin-top: 0.35rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.58rem; color: var(--muted);
+}
+
+/* trend */
+.hero-trend {
+  display: inline-flex; align-items: center;
+  gap: 0.35rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.68rem; color: var(--muted);
+  margin-top: 0.75rem; cursor: help; position: relative;
+}
+.trend-sym { font-weight: bold; }
+.trend-up   .trend-sym { color: var(--green); }
+.trend-down .trend-sym { color: #c83c28; }
+[data-theme=dark] .trend-down .trend-sym { color: #ff6b7a; }
+.trend-flat .trend-sym { color: var(--muted); }
+
+.trend-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px); left: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-str);
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.65rem; color: var(--text);
+  white-space: nowrap; line-height: 1.9;
+  z-index: 10; pointer-events: none;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.hero-trend:hover .trend-tip { display: block; }
+
+/* MAs — lado direito do hero */
+.hero-mas {
+  display: flex; flex-direction: column;
+  gap: 0.85rem; min-width: 160px;
+}
+.ma-row {
+  display: flex; align-items: baseline;
+  justify-content: space-between; gap: 1rem;
+}
+.ma-name {
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem; color: var(--muted);
+  display: flex; align-items: center; gap: 0.4rem;
+}
+.ma-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.ma-val { font-size: 1rem; font-weight: normal; }
+.ma-bar {
+  width: 100%; height: 2px; border-radius: 1px;
+  background: var(--border); margin-top: 0.2rem;
+  overflow: hidden;
+}
+.ma-bar-fill { height: 100%; border-radius: 1px; transition: width 0.6s; }
+
+/* ══════════════════════════════════════
+   LEGEND
+══════════════════════════════════════ */
+.legend {
+  display: flex; gap: 0.35rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.leg {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.22rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem;
+  color: var(--muted); white-space: nowrap;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.leg.on {
+  border-color: var(--lc);
+  color: var(--text);
+  background: rgba(0,0,0,0.03);
+}
+[data-theme=dark] .leg.on { background: rgba(255,255,255,0.04); }
+.leg-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* ══════════════════════════════════════
+   CHART CARDS
+══════════════════════════════════════ */
+.chart-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+.chart-head {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;
+}
+.chart-label {
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.range-row { display: flex; gap: 0.3rem; align-items: center; }
+.rbtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem; padding: 0.2rem 0.55rem;
+  border-radius: 4px; cursor: pointer;
+  transition: all 0.15s;
+}
+.rbtn:hover, .rbtn.on {
+  border-color: var(--accent); color: var(--accent);
+  background: rgba(224,92,42,0.06);
+}
+[data-theme=dark] .rbtn:hover, [data-theme=dark] .rbtn.on {
+  background: rgba(240,112,64,0.10);
+}
+.chart-canvas { position: relative; height: 300px; }
+canvas { width: 100% !important; }
+
+.chart-hint {
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem; color: var(--muted);
+  margin-top: 0.35rem; text-align: right;
+}
+.ibov-note {
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem; color: var(--muted);
+  margin-top: 0.4rem; text-align: right;
+}
+
+/* ══════════════════════════════════════
+   SEÇÃO TÉCNICA — colapsável
+══════════════════════════════════════ */
+.tech {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.tech-hd {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.9rem 1.25rem; cursor: pointer;
+  user-select: none; transition: background 0.15s;
+  border-bottom: 1px solid transparent;
+}
+.tech-hd:hover { background: rgba(0,0,0,0.02); }
+[data-theme=dark] .tech-hd:hover { background: rgba(255,255,255,0.02); }
+.tech-hd.open { border-bottom-color: var(--border); }
+.tech-chev {
+  font-family: 'Courier New', monospace;
+  font-size: 0.65rem; color: var(--muted);
+  transition: transform 0.2s; line-height: 1;
+}
+.tech-chev.shut { transform: rotate(-90deg); }
+.tech-hdlabel {
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.tech-body { padding: 1.5rem; display: none; }
+.tech-body.open { display: block; }
+
+/* KPIs */
+.kpis {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 0.75rem; margin-bottom: 1.5rem;
+}
+.kpi {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px; padding: 1rem 1.1rem;
+  position: relative; overflow: hidden;
+}
+.kpi::after {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 1.5px;
+}
+.kpi-20::after  { background: var(--c20); }
+.kpi-50::after  { background: var(--c50); }
+.kpi-200::after { background: var(--c200); }
+.kpi-lbl {
+  font-family: 'Courier New', monospace;
+  font-size: 0.58rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+.kpi-val { font-size: 1.65rem; font-weight: normal; line-height: 1; margin-bottom: 0.2rem; }
+.kpi-20  .kpi-val { color: var(--c20); }
+.kpi-50  .kpi-val { color: var(--c50); }
+.kpi-200 .kpi-val { color: var(--c200); }
+.kpi-sub { font-family: 'Courier New', monospace; font-size: 0.6rem; color: var(--muted); }
+
+/* breadth chart legend */
+.tech-legend {
+  display: flex; gap: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem; margin-bottom: 0.85rem;
+}
+.tleg { display: flex; align-items: center; gap: 0.3rem; }
+.tleg-dot { width: 6px; height: 6px; border-radius: 50%; }
+.breadth-canvas { position: relative; height: 240px; }
+
+/* nota metodológica */
+.method-note {
+  margin-top: 1.25rem;
+  padding: 0.85rem 1.1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.63rem; color: var(--muted); line-height: 1.9;
+}
+.method-note strong { color: var(--text); }
+
+/* ── Zoom controls ── */
+.zoom-controls { display: none; align-items: center; gap: 0.4rem; }
+.zoom-controls.visible { display: flex; }
+.zoom-reset {
+  background: transparent;
+  border: 1px solid var(--border-str);
+  color: var(--muted);
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem; padding: 0.2rem 0.6rem;
+  border-radius: 4px; cursor: pointer;
+  transition: all 0.15s;
+}
+.zoom-reset:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Measure tooltip ── */
+.measure-tip {
+  display: none;
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--border-str);
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 50;
+  white-space: nowrap;
+  line-height: 1.7;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.measure-tip .mt-date { color: var(--muted); font-size: 0.65rem; }
+.measure-tip .mt-val  { font-size: 1rem; font-weight: normal; }
+.measure-tip .mt-pos  { color: var(--green); }
+.measure-tip .mt-neg  { color: #c83c28; }
+[data-theme=dark] .measure-tip .mt-neg { color: #ff6b7a; }
+
+/* ── Footer ── */
+footer {
+  margin-top: 2.5rem; padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-family: 'Courier New', monospace;
+  font-size: 0.62rem; color: var(--muted);
+  display: flex; justify-content: space-between;
+  flex-wrap: wrap; gap: 0.5rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 700px) {
+  .hero { grid-template-columns: 1fr; gap: 1.5rem; }
+  .kpis { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  body { padding: 1.5rem 1rem 3rem; }
+  .module-title { font-size: 1.5rem; }
+  .hero-score { font-size: 2.8rem; }
+  .kpis { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>carregando</span>
+</div>
+
+<div class="top-bar">
+  <a class="wordmark" href="index.html">← ferramentas financeiras</a>
+  <div class="top-bar-right">
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☽ escuro</button>
+  </div>
+</div>
+
+<div class="module-tag">módulo 03</div>
+<h1 class="module-title">IBOV Breadth</h1>
+<div class="module-meta">
+  <span id="lastUpdate">—</span>
+  <span class="meta-sep">·</span>
+  <span><span id="nConst">—</span> ações · B3</span>
+  <span class="meta-sep">·</span>
+  <span>atualiza a cada 15 min no pregão</span>
+</div>
+
+<div class="error" id="errMsg">
+  Erro ao carregar dados. Verifique se breadth.json está presente.
+</div>
+
+<!-- HERO -->
+<div class="hero" id="hero">
+  <div class="hero-main">
+    <div class="hero-eyebrow">Composite de sentimento</div>
+    <div class="hero-score" id="heroScore">—</div>
+    <div class="hero-label" id="heroLabel">—</div>
+
+    <div class="score-bar-wrap">
+      <div class="score-bar-track">
+        <div class="score-bar-needle" id="barNeedle" style="left:0%"></div>
+      </div>
+      <div class="score-bar-labels">
+        <span>0%</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100%</span>
+      </div>
+    </div>
+
+    <div class="hero-trend" id="heroTrend">
+      <span class="trend-sym" id="trendSym">—</span>
+      <span id="trendTxt">—</span>
+      <div class="trend-tip" id="trendTip"></div>
+    </div>
+  </div>
+
+  <div class="hero-mas">
+    <div class="ma-row">
+      <div>
+        <div class="ma-name"><div class="ma-dot" style="background:var(--c20)"></div>MA20</div>
+        <div class="ma-bar"><div class="ma-bar-fill" id="bar20" style="background:var(--c20);width:0%"></div></div>
+      </div>
+      <div class="ma-val" id="v20" style="color:var(--c20)">—</div>
+    </div>
+    <div class="ma-row">
+      <div>
+        <div class="ma-name"><div class="ma-dot" style="background:var(--c50)"></div>MA50</div>
+        <div class="ma-bar"><div class="ma-bar-fill" id="bar50" style="background:var(--c50);width:0%"></div></div>
+      </div>
+      <div class="ma-val" id="v50" style="color:var(--c50)">—</div>
+    </div>
+    <div class="ma-row">
+      <div>
+        <div class="ma-name"><div class="ma-dot" style="background:var(--c200)"></div>MA200</div>
+        <div class="ma-bar"><div class="ma-bar-fill" id="bar200" style="background:var(--c200);width:0%"></div></div>
+      </div>
+      <div class="ma-val" id="v200" style="color:var(--c200)">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <div class="leg" id="leg0" style="--lc:#2d7a45"><div class="leg-dot" style="background:#2d7a45"></div>0–20% · muito deprimido</div>
+  <div class="leg" id="leg1" style="--lc:#5cb85c"><div class="leg-dot" style="background:#5cb85c"></div>20–40% · abaixo da média</div>
+  <div class="leg" id="leg2" style="--lc:#f7c948"><div class="leg-dot" style="background:#f7c948"></div>40–60% · neutro</div>
+  <div class="leg" id="leg3" style="--lc:#e05c2a"><div class="leg-dot" style="background:#e05c2a"></div>60–80% · aquecido</div>
+  <div class="leg" id="leg4" style="--lc:#8b2020"><div class="leg-dot" style="background:#8b2020"></div>80–100% · sobrecomprado</div>
+</div>
+
+<!-- GRÁFICO IBOV COLORIZADO -->
+<div class="chart-wrap" id="ibovChartWrap">
+  <div class="chart-head">
+    <span class="chart-label">IBOV — preço com coloração de sentimento</span>
+    <div class="range-row" id="ibovRangeRow">
+      <button class="rbtn" onclick="setIbovRange(90,this)">3M</button>
+      <button class="rbtn" onclick="setIbovRange(180,this)">6M</button>
+      <button class="rbtn" onclick="setIbovRange(365,this)">1A</button>
+      <button class="rbtn" onclick="setIbovRange(730,this)">2A</button>
+      <button class="rbtn" onclick="setIbovRange(1825,this)">5A</button>
+      <button class="rbtn on" onclick="setIbovRange(null,this)">Máx</button>
+      <div class="zoom-controls" id="ibovZoomCtrl">
+        <button class="zoom-reset" onclick="resetZoom('ibov')">↺ resetar zoom</button>
+      </div>
+    </div>
+  </div>
+  <div style="position:relative">
+    <div class="chart-canvas"><canvas id="ibovChart"></canvas></div>
+    <div class="measure-tip" id="ibovMeasure"></div>
+  </div>
+  <div class="chart-hint">scroll para zoom · drag para medir · shift+drag para pan</div>
+  <div class="ibov-note">cor = composite de sentimento · verde escuro = muito deprimido · vermelho = sobrecomprado</div>
+</div>
+
+<!-- GRÁFICO PRINCIPAL -->
+<div class="chart-wrap">
+  <div class="chart-head">
+    <span class="chart-label">Histórico do composite</span>
+    <div class="range-row" id="rangeRow">
+      <button class="rbtn" onclick="setRange(90,this)">3M</button>
+      <button class="rbtn" onclick="setRange(180,this)">6M</button>
+      <button class="rbtn" onclick="setRange(365,this)">1A</button>
+      <button class="rbtn" onclick="setRange(730,this)">2A</button>
+      <button class="rbtn" onclick="setRange(1825,this)">5A</button>
+      <button class="rbtn on" onclick="setRange(null,this)">Máx</button>
+      <div class="zoom-controls" id="sentZoomCtrl">
+        <button class="zoom-reset" onclick="resetZoom('sent')">↺ resetar zoom</button>
+      </div>
+    </div>
+  </div>
+  <div style="position:relative">
+    <div class="chart-canvas"><canvas id="sentChart"></canvas></div>
+  </div>
+</div>
+
+<!-- TÉCNICO -->
+<div class="tech">
+  <div class="tech-hd" id="techHd" onclick="toggleTech()">
+    <span class="tech-chev shut" id="techChev">▼</span>
+    <span class="tech-hdlabel">Componentes do composite</span>
+  </div>
+  <div class="tech-body" id="techBody">
+    <div class="kpis">
+      <div class="kpi kpi-20">
+        <div class="kpi-lbl">% acima da MA20</div>
+        <div class="kpi-val" id="kv20">—</div>
+        <div class="kpi-sub">curto prazo</div>
+      </div>
+      <div class="kpi kpi-50">
+        <div class="kpi-lbl">% acima da MA50</div>
+        <div class="kpi-val" id="kv50">—</div>
+        <div class="kpi-sub">médio prazo</div>
+      </div>
+      <div class="kpi kpi-200">
+        <div class="kpi-lbl">% acima da MA200</div>
+        <div class="kpi-val" id="kv200">—</div>
+        <div class="kpi-sub">longo prazo</div>
+      </div>
+    </div>
+    <div class="tech-legend">
+      <div class="tleg"><div class="tleg-dot" style="background:var(--c20)"></div>MA20</div>
+      <div class="tleg"><div class="tleg-dot" style="background:var(--c50)"></div>MA50</div>
+      <div class="tleg"><div class="tleg-dot" style="background:var(--c200)"></div>MA200</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:.35rem">
+      <div class="zoom-controls" id="breadthZoomCtrl">
+        <button class="zoom-reset" onclick="resetZoom('breadth')">↺ resetar zoom</button>
+      </div>
+    </div>
+    <div style="position:relative">
+      <div class="breadth-canvas"><canvas id="breadthChart"></canvas></div>
+    </div>
+    <div class="method-note">
+      O composite pondera as três médias por poder preditivo sobre retornos futuros:
+      <strong>MA200 × 50%</strong> · <strong>MA50 × 35%</strong> · <strong>MA20 × 15%</strong>.
+      Universo: composição histórica correta do IBOV por período — sem survivorship bias.
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>IBOV Breadth · dados via Yahoo Finance / B3</span>
+  <span>atualiza a cada 15 min no pregão</span>
+</footer>
+
+<script>
+// ── Theme (herdado do localStorage — mesmo sistema do resto do site) ─────────
+(function() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const btn = document.getElementById('themeBtn');
+    if (btn) btn.textContent = '○ claro';
+  }
+})();
+
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (isDark) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('theme', 'light');
+    document.getElementById('themeBtn').textContent = '☽ escuro';
+  } else {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
+    document.getElementById('themeBtn').textContent = '○ claro';
+  }
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let allData = [], enriched = [], sentObj = null, breadthObj = null;
+let ibovPriceData = [];
+let ibovChartObj  = null;
+let ibovEnriched  = [];
+
+// ── Composite (MA200×50% · MA50×35% · MA20×15%) ───────────────────────────────
+function comp(b20, b50, b200) {
+  let s = 0, w = 0;
+  if (b200 != null) { s += b200 * .50; w += .50; }
+  if (b50  != null) { s += b50  * .35; w += .35; }
+  if (b20  != null) { s += b20  * .15; w += .15; }
+  return w ? s / w : null;
+}
+
+// ── Colour scale (verde escuro → vermelho; idêntico ao original) ──────────────
+function col(v, a) {
+  a = a ?? 1;
+  const st = [
+    [0,   [26,77,46]],  [.15, [45,122,69]], [.30, [92,184,92]],
+    [.42, [138,201,38]], [.50, [247,201,72]], [.62, [240,151,74]],
+    [.72, [224,92,42]],  [.83, [192,57,43]], [1.0, [100,20,20]],
+  ];
+  let lo = st[0], hi = st[st.length - 1];
+  for (let i = 0; i < st.length - 1; i++) {
+    if (v >= st[i][0] && v <= st[i+1][0]) { lo = st[i]; hi = st[i+1]; break; }
+  }
+  const t = lo[0] === hi[0] ? 0 : (v - lo[0]) / (hi[0] - lo[0]);
+  const r = Math.round(lo[1][0] + t * (hi[1][0] - lo[1][0]));
+  const g = Math.round(lo[1][1] + t * (hi[1][1] - lo[1][1]));
+  const b = Math.round(lo[1][2] + t * (hi[1][2] - lo[1][2]));
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function condInfo(v) {
+  if (v == null) return {label: '—', idx: -1};
+  if (v < .20)   return {label: 'Mercado muito deprimido — aportar', idx: 0};
+  if (v < .40)   return {label: 'Mercado abaixo da média — aportar', idx: 1};
+  if (v < .60)   return {label: 'Neutro', idx: 2};
+  if (v < .80)   return {label: 'Mercado aquecido — cautela', idx: 3};
+  return          {label: 'Sobrecomprado — evitar aportes', idx: 4};
+}
+
+function trend(data) {
+  if (data.length < 21) return {dir: 'flat', diff: 0, now: null, prev: null};
+  const now  = data[data.length - 1].composite;
+  const prev = data[data.length - 21].composite;
+  if (now == null || prev == null) return {dir: 'flat', diff: 0, now, prev};
+  const d = now - prev;
+  return {dir: d > .03 ? 'up' : d < -.03 ? 'down' : 'flat', diff: d, now, prev};
+}
+
+// ── Chart colours derived from CSS vars (respects light/dark) ────────────────
+function getVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function chartGridColor() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+}
+function chartTickColor() { return getVar('--muted'); }
+function tooltipBg()      { return getVar('--surface'); }
+function tooltipBorder()  { return getVar('--border-str'); }
+function tooltipTitle()   { return getVar('--muted'); }
+function tooltipBody()    { return getVar('--text'); }
+
+// ── Hero ─────────────────────────────────────────────────────────────────────
+function renderHero(latest, data) {
+  const score = comp(latest.breadth_20, latest.breadth_50, latest.breadth_200);
+  if (score == null) return;
+
+  const pct   = +(score * 100).toFixed(1);
+  const color = col(score, 1);
+  const info  = condInfo(score);
+  const tr    = trend(data);
+  const fmt   = v => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+  document.documentElement.style.setProperty('--hero-color', color);
+
+  document.getElementById('heroScore').textContent = pct + '%';
+  document.getElementById('heroLabel').textContent = info.label;
+  document.getElementById('barNeedle').style.left  = pct + '%';
+
+  const SYM = {up: '↑', down: '↓', flat: '→'};
+  const TXT = {up: 'melhorando', down: 'piorando', flat: 'estável'};
+  const el  = document.getElementById('heroTrend');
+  el.className = 'hero-trend trend-' + tr.dir;
+  document.getElementById('trendSym').textContent = SYM[tr.dir];
+  document.getElementById('trendTxt').textContent = TXT[tr.dir];
+
+  const nowP  = tr.now  != null ? (tr.now  * 100).toFixed(1) : '—';
+  const prevP = tr.prev != null ? (tr.prev * 100).toFixed(1) : '—';
+  const diffP = tr.diff != null ? (tr.diff >= 0 ? '+' : '') + (tr.diff * 100).toFixed(1) : '—';
+  document.getElementById('trendTip').innerHTML =
+    `variação nos últimos 20 pregões<br>` +
+    `hoje <strong>${nowP}%</strong> · 20 dias atrás <strong>${prevP}%</strong><br>` +
+    `<span style="color:var(--muted)">${diffP} p.p. · mede o sentimento, não o preço</span>`;
+
+  document.getElementById('v20').textContent  = fmt(latest.breadth_20);
+  document.getElementById('v50').textContent  = fmt(latest.breadth_50);
+  document.getElementById('v200').textContent = fmt(latest.breadth_200);
+  document.getElementById('bar20').style.width  = fmt(latest.breadth_20);
+  document.getElementById('bar50').style.width  = fmt(latest.breadth_50);
+  document.getElementById('bar200').style.width = fmt(latest.breadth_200);
+
+  // KPIs técnicos
+  document.getElementById('kv20').textContent  = fmt(latest.breadth_20);
+  document.getElementById('kv50').textContent  = fmt(latest.breadth_50);
+  document.getElementById('kv200').textContent = fmt(latest.breadth_200);
+
+  // Header meta
+  document.getElementById('lastUpdate').textContent = latest.date || '—';
+  document.getElementById('nConst').textContent     = latest.n_constituents || '—';
+
+  // Legend
+  for (let i = 0; i <= 4; i++)
+    document.getElementById('leg' + i).classList.toggle('on', i === info.idx);
+}
+
+// ── Gráfico sentimento ────────────────────────────────────────────────────────
+function renderSent(data) {
+  const ctx = document.getElementById('sentChart').getContext('2d');
+  if (sentObj) sentObj.destroy();
+
+  const gc = chartGridColor();
+  const tc = chartTickColor();
+
+  sentObj = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [{
+        data: data.map(d => d.composite != null ? +(d.composite * 100).toFixed(2) : null),
+        borderWidth: 2.5, pointRadius: 0, tension: 0.3,
+        fill: false, spanGaps: false,
+        segment: { borderColor: c => {
+          const v = c.p0.parsed.y;
+          return v == null ? 'transparent' : col(v / 100, .95);
+        }},
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: {duration: 350},
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {display: false},
+        tooltip: {
+          backgroundColor: tooltipBg(),
+          borderColor: tooltipBorder(),
+          borderWidth: 1,
+          titleColor: tooltipTitle(),
+          bodyColor: tooltipBody(),
+          displayColors: false, padding: 10,
+          callbacks: {
+            title: items => items[0]?.label ?? '',
+            label: c => {
+              const v = c.parsed.y;
+              if (v == null) return '—';
+              return `${v.toFixed(1)}%  ·  ${condInfo(v / 100).label}`;
+            },
+          },
+        },
+        zoom: {
+          zoom: {wheel: {enabled: true}, pinch: {enabled: true}, mode: 'x',
+            onZoom: ({chart}) => showZoomReset(chart)},
+          pan: {enabled: true, mode: 'x', modifierKey: 'shift',
+            onPan: ({chart}) => showZoomReset(chart)},
+        },
+      },
+      scales: {
+        x: { grid: {color: gc}, ticks: {color: tc, font: {family: "'Courier New'", size: 10}, maxTicksLimit: 10, maxRotation: 0} },
+        y: { min: 0, max: 100, grid: {color: gc}, ticks: {color: tc, font: {family: "'Courier New'", size: 10}, callback: v => v + '%'} },
+      },
+    },
+    plugins: [{
+      id: 'zones',
+      beforeDraw(ch) {
+        const {ctx, scales: {y, x}, chartArea: ca} = ch;
+        ctx.save();
+        ctx.rect(ca.left, ca.top, ca.right - ca.left, ca.bottom - ca.top);
+        ctx.clip();
+        [[0,20,'rgba(45,122,69,.06)'],[20,40,'rgba(92,184,92,.04)'],
+         [40,60,'rgba(247,201,72,.03)'],[60,80,'rgba(224,92,42,.04)'],
+         [80,100,'rgba(139,0,0,.06)']].forEach(([lo,hi,c]) => {
+          ctx.fillStyle = c;
+          ctx.fillRect(x.left, y.getPixelForValue(hi), x.right - x.left, y.getPixelForValue(lo) - y.getPixelForValue(hi));
+        });
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(247,201,72,.15)';
+        ctx.setLineDash([4,6]); ctx.lineWidth = 1;
+        ctx.moveTo(x.left, y.getPixelForValue(50)); ctx.lineTo(x.right, y.getPixelForValue(50));
+        ctx.stroke();
+        ctx.restore();
+      },
+    }],
+  });
+  chartRegistry['sent'] = sentObj;
+}
+
+// ── Gráfico breadth técnico ───────────────────────────────────────────────────
+function renderBreadth(data) {
+  const ctx = document.getElementById('breadthChart').getContext('2d');
+  if (breadthObj) breadthObj.destroy();
+
+  const gc = chartGridColor();
+  const tc = chartTickColor();
+
+  breadthObj = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [
+        {label:'MA20',  data:data.map(d=>d.breadth_20 !=null?+(d.breadth_20 *100).toFixed(2):null), borderColor:'var(--c20)',  backgroundColor:'transparent', borderWidth:1,   pointRadius:0, tension:0.2, spanGaps:false},
+        {label:'MA50',  data:data.map(d=>d.breadth_50 !=null?+(d.breadth_50 *100).toFixed(2):null), borderColor:'var(--c50)',  backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.2, spanGaps:false},
+        {label:'MA200', data:data.map(d=>d.breadth_200!=null?+(d.breadth_200*100).toFixed(2):null), borderColor:'var(--c200)', backgroundColor:'rgba(124,106,247,.04)', borderWidth:2.5, pointRadius:0, tension:0.3, fill:true, spanGaps:false},
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: {duration: 350},
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {display: false},
+        tooltip: {
+          backgroundColor: tooltipBg(), borderColor: tooltipBorder(),
+          borderWidth: 1, titleColor: tooltipTitle(), bodyColor: tooltipBody(),
+          displayColors: false, padding: 10,
+          callbacks: {
+            title: items => items[0]?.label ?? '',
+            label: c => `${c.dataset.label}  ${c.parsed.y?.toFixed(1)}%`,
+          },
+        },
+        zoom: {
+          zoom: {wheel: {enabled: true}, pinch: {enabled: true}, mode: 'x',
+            onZoom: ({chart}) => showZoomReset(chart)},
+          pan: {enabled: true, mode: 'x', modifierKey: 'shift',
+            onPan: ({chart}) => showZoomReset(chart)},
+        },
+      },
+      scales: {
+        x: {grid: {color: gc}, ticks: {color: tc, font: {family: "'Courier New'", size: 10}, maxTicksLimit: 10, maxRotation: 0}},
+        y: {min: 0, max: 100, grid: {color: gc}, ticks: {color: tc, font: {family: "'Courier New'", size: 10}, callback: v => v + '%'}},
+      },
+    },
+    plugins: [{
+      id: 'thresholds',
+      afterDraw(ch) {
+        const {ctx, scales: {x, y}} = ch;
+        [20,50,80].forEach(lv => {
+          const yp = y.getPixelForValue(lv);
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle = lv === 50 ? 'rgba(247,201,72,.2)' : 'rgba(100,100,100,.15)';
+          ctx.setLineDash([4,6]); ctx.lineWidth = 1;
+          ctx.moveTo(x.left, yp); ctx.lineTo(x.right, yp); ctx.stroke();
+          ctx.fillStyle = chartTickColor(); ctx.font = "10px 'Courier New'";
+          ctx.fillText(lv + '%', x.right + 4, yp + 3); ctx.restore();
+        });
+      },
+    }],
+  });
+  chartRegistry['breadth'] = breadthObj;
+}
+
+// ── IBOV colorizado ───────────────────────────────────────────────────────────
+function alignIbovWithComposite(prices, compEnriched) {
+  const compMap = {};
+  compEnriched.forEach(d => { compMap[d.date] = d.composite; });
+  return prices
+    .map(d => ({date: d.date, close: d.close, composite: compMap[d.date] ?? null}))
+    .filter(d => d.composite != null);
+}
+
+function renderIbovChart(data) {
+  const ctx = document.getElementById('ibovChart').getContext('2d');
+  if (ibovChartObj) ibovChartObj.destroy();
+
+  const gc = chartGridColor();
+  const tc = chartTickColor();
+
+  ibovChartObj = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [{
+        label: 'IBOV',
+        data: data.map(d => d.close),
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.1,
+        fill: false,
+        spanGaps: false,
+        segment: {
+          borderColor: ctx => {
+            const v = ctx.p0.parsed.y;
+            if (v == null) return 'transparent';
+            const c = data[ctx.p0DataIndex]?.composite;
+            return c != null ? col(c, 0.95) : 'rgba(124,106,247,.7)';
+          },
+        },
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {duration: 350},
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {display: false},
+        tooltip: {
+          backgroundColor: tooltipBg(),
+          borderColor: tooltipBorder(),
+          borderWidth: 1,
+          titleColor: tooltipTitle(),
+          bodyColor: tooltipBody(),
+          displayColors: false,
+          padding: 10,
+          callbacks: {
+            title: items => items[0]?.label ?? '',
+            label: ctx => {
+              const d = data[ctx.dataIndex];
+              const close = d?.close != null
+                ? Math.round(d.close).toLocaleString('pt-BR')
+                : '—';
+              const info = condInfo(d?.composite);
+              const compPct = d?.composite != null
+                ? (d.composite * 100).toFixed(1) + '%'
+                : '—';
+              return [`${close} pts`, `composite ${compPct}  ·  ${info.label}`];
+            },
+          },
+        },
+        zoom: {
+          zoom: {wheel: {enabled: true}, pinch: {enabled: true}, mode: 'x',
+            onZoom: ({chart}) => showZoomReset(chart)},
+          pan: {enabled: true, mode: 'x', modifierKey: 'shift',
+            onPan: ({chart}) => showZoomReset(chart)},
+        },
+      },
+      scales: {
+        x: {
+          grid: {color: gc},
+          ticks: {color: tc, font: {family: "'Courier New'", size: 10}, maxTicksLimit: 10, maxRotation: 0},
+        },
+        y: {
+          grid: {color: gc},
+          ticks: {
+            color: tc,
+            font: {family: "'Courier New'", size: 10},
+            callback: v => v >= 1000 ? (v/1000).toFixed(0) + 'k' : v,
+          },
+        },
+      },
+    },
+  });
+  chartRegistry['ibov'] = ibovChartObj;
+}
+
+function setIbovRange(days, btn) {
+  document.querySelectorAll('#ibovRangeRow .rbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const data = days
+    ? ibovEnriched.filter(d => new Date(d.date) >= new Date(Date.now() - days * 864e5))
+    : ibovEnriched;
+  renderIbovChart(data);
+}
+
+// ── Range filter composite ────────────────────────────────────────────────────
+function setRange(days, btn) {
+  document.querySelectorAll('.rbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const data = days
+    ? enriched.filter(d => new Date(d.date) >= new Date(Date.now() - days * 864e5))
+    : enriched;
+  renderSent(data);
+}
+
+// ── Toggle técnico ────────────────────────────────────────────────────────────
+let techOpen = false;
+function toggleTech() {
+  techOpen = !techOpen;
+  document.getElementById('techBody').classList.toggle('open', techOpen);
+  document.getElementById('techChev').classList.toggle('shut', !techOpen);
+  document.getElementById('techHd').classList.toggle('open', techOpen);
+  if (techOpen) renderBreadth(allData);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ZOOM RESET
+// ══════════════════════════════════════════════════════════════════════════════
+const chartRegistry = {};
+
+function showZoomReset(chart) {
+  const id = Object.keys(chartRegistry).find(k => chartRegistry[k] === chart);
+  if (id) document.getElementById(id + 'ZoomCtrl')?.classList.add('visible');
+}
+
+function resetZoom(id) {
+  chartRegistry[id]?.resetZoom();
+  document.getElementById(id + 'ZoomCtrl')?.classList.remove('visible');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MEDIÇÃO CLIQUE+DRAG
+// ══════════════════════════════════════════════════════════════════════════════
+function setupMeasure(canvasId, tipId, chartKey, getYLabel) {
+  const canvas = document.getElementById(canvasId);
+  const tip    = document.getElementById(tipId);
+  if (!canvas || !tip) return;
+
+  let measuring  = false;
+  let dragged    = false;
+  let tipVisible = false;
+  let startIdx = null, startVal = null, startDate = null, startPx = null;
+
+  const overlay = document.createElement('canvas');
+  overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+  canvas.parentNode.style.position = 'relative';
+  canvas.parentNode.appendChild(overlay);
+
+  function resize() {
+    overlay.width  = canvas.offsetWidth;
+    overlay.height = canvas.offsetHeight;
+  }
+  resize();
+  new ResizeObserver(resize).observe(canvas);
+
+  function snapToData(px) {
+    const chart  = chartRegistry[chartKey];
+    if (!chart) return null;
+    const xScale = chart.scales.x;
+    const yScale = chart.scales.y;
+    if (!xScale || !yScale) return null;
+    const ds = chart.data.datasets[0];
+    if (!ds) return null;
+    const n  = ds.data.length;
+    let idx  = Math.round(xScale.getValueForPixel(px));
+    idx = Math.max(0, Math.min(n - 1, idx));
+    let lo = idx, hi = idx;
+    while (lo >= 0 || hi < n) {
+      if (lo >= 0 && ds.data[lo] != null) { idx = lo; break; }
+      if (hi < n  && ds.data[hi] != null) { idx = hi; break; }
+      lo--; hi++;
+    }
+    if (ds.data[idx] == null) return null;
+    const snappedPx = xScale.getPixelForValue(idx);
+    const val       = ds.data[idx];
+    const yPx       = yScale.getPixelForValue(val);
+    return {idx, val, label: chart.data.labels[idx], px: snappedPx, yPx};
+  }
+
+  function fmtDiff(diff, pct) {
+    const sign = diff >= 0 ? '+' : '−';
+    return sign + getYLabel(Math.abs(diff), Math.abs(pct));
+  }
+
+  function hideChartTooltip() {
+    const chart = chartRegistry[chartKey];
+    if (!chart) return;
+    chart.tooltip.setActiveElements([], {x:0,y:0});
+    chart.update('none');
+  }
+
+  function showChartTooltip() {
+    const chart = chartRegistry[chartKey];
+    if (chart) chart.update('none');
+  }
+
+  function drawOverlay(startSnap, endSnap) {
+    const ctx2 = overlay.getContext('2d');
+    ctx2.clearRect(0, 0, overlay.width, overlay.height);
+    if (!startSnap || !endSnap) return;
+    const chart = chartRegistry[chartKey];
+    const ca    = chart?.chartArea;
+    if (!ca) return;
+    const x1   = Math.min(startSnap.px, endSnap.px);
+    const x2   = Math.max(startSnap.px, endSnap.px);
+    const diff = endSnap.val - startSnap.val;
+    const pos  = diff >= 0;
+    ctx2.save();
+    ctx2.beginPath();
+    ctx2.rect(ca.left, ca.top, ca.right - ca.left, ca.bottom - ca.top);
+    ctx2.clip();
+    ctx2.fillStyle   = pos ? 'rgba(61,200,120,.11)' : 'rgba(200,60,40,.11)';
+    ctx2.strokeStyle = pos ? 'rgba(61,200,120,.35)' : 'rgba(200,60,40,.35)';
+    ctx2.lineWidth   = 1;
+    ctx2.fillRect(x1, ca.top, x2 - x1, ca.bottom - ca.top);
+    ctx2.strokeRect(x1, ca.top, x2 - x1, ca.bottom - ca.top);
+    const dotColor = pos ? 'rgba(61,200,120,.9)' : 'rgba(200,60,40,.9)';
+    [startSnap, endSnap].forEach(snap => {
+      ctx2.beginPath();
+      ctx2.arc(snap.px, snap.yPx, 5, 0, 2 * Math.PI);
+      ctx2.fillStyle   = dotColor;
+      ctx2.fill();
+      ctx2.strokeStyle = pos ? '#fff' : '#fff';
+      ctx2.lineWidth   = 1.5;
+      ctx2.stroke();
+    });
+    ctx2.restore();
+  }
+
+  function clearOverlay() {
+    overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+  }
+
+  let lastEndSnap = null;
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.shiftKey) return;
+    if (tipVisible) {
+      tipVisible = false;
+      tip.style.display = 'none';
+      clearOverlay();
+      return;
+    }
+    const rect  = canvas.getBoundingClientRect();
+    const snap  = snapToData(e.clientX - rect.left);
+    if (!snap || snap.val == null) return;
+    startIdx  = snap.idx;
+    startVal  = snap.val;
+    startDate = snap.label;
+    startPx   = snap.px;
+    measuring = true;
+    dragged   = false;
+    lastEndSnap = null;
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!measuring) return;
+    dragged = true;
+    hideChartTooltip();
+    const rect    = canvas.getBoundingClientRect();
+    const curX    = e.clientX - rect.left;
+    const curY    = e.clientY - rect.top;
+    const endSnap = snapToData(curX);
+    lastEndSnap   = endSnap;
+    const startSnap = snapToData(startPx);
+    drawOverlay(startSnap, endSnap);
+    if (!endSnap || endSnap.val == null) return;
+    const diff = endSnap.val - startVal;
+    const pct  = startVal !== 0 ? (diff / Math.abs(startVal)) * 100 : 0;
+    const cls  = diff >= 0 ? 'mt-pos' : 'mt-neg';
+    tip.innerHTML = `
+      <div class="mt-date">${startDate} → ${endSnap.label}</div>
+      <div class="mt-val ${cls}">${fmtDiff(diff, pct)}</div>
+    `;
+    const tipW = tip.offsetWidth || 220;
+    let tx = curX + 14;
+    if (tx + tipW > canvas.offsetWidth) tx = curX - tipW - 14;
+    tip.style.left    = tx + 'px';
+    tip.style.top     = Math.max(4, curY - 48) + 'px';
+    tip.style.display = 'block';
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!measuring) return;
+    measuring = false;
+    if (dragged && lastEndSnap) {
+      tipVisible = true;
+      showChartTooltip();
+    } else {
+      clearOverlay();
+      tip.style.display = 'none';
+    }
+  });
+}
+
+function initMeasureAll() {
+  setupMeasure('ibovChart', 'ibovMeasure', 'ibov',
+    (abs, absPct) => `${abs.toFixed(0)} pts  (${absPct.toFixed(1)}%)`
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  INIT — lê ficheiros estáticos em vez da API
+// ══════════════════════════════════════════════════════════════════════════════
+async function init() {
+  try {
+    // Um único fetch — breadth.json já tem latest embutido
+    const [bRes, iRes] = await Promise.all([
+      fetch('./breadth.json'),
+      fetch('./ibov_price.json'),
+    ]);
+    if (!bRes.ok) throw new Error('breadth.json não encontrado');
+    if (!iRes.ok) throw new Error('ibov_price.json não encontrado');
+
+    const bJson  = await bRes.json();
+    const iJson  = await iRes.json();
+
+    const latest = bJson.latest;
+    allData      = bJson.data;
+    enriched     = allData
+      .map(d => ({...d, composite: comp(d.breadth_20, d.breadth_50, d.breadth_200)}))
+      .filter(d => d.composite != null);
+
+    ibovPriceData = iJson.data;
+    ibovEnriched  = alignIbovWithComposite(ibovPriceData, enriched);
+    if (ibovEnriched.length) {
+      renderIbovChart(ibovEnriched);
+    } else {
+      const wrap = document.getElementById('ibovChartWrap');
+      if (wrap) wrap.style.display = 'none';
+    }
+
+    renderHero(latest, enriched);
+    renderSent(enriched);
+
+    if (!window._measureInited) {
+      window._measureInited = true;
+      setTimeout(initMeasureAll, 300);
+    }
+
+    document.getElementById('loading').classList.add('hidden');
+
+  } catch(e) {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('errMsg').classList.add('on');
+    console.error(e);
+  }
+}
+
+init();
+// Recarrega a cada 15 min (intervalo do GitHub Actions)
+setInterval(init, 15 * 60 * 1000);
+</script>
+</body>
+</html>
