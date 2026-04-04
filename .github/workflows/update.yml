@@ -2,8 +2,13 @@ name: Atualizar dados & deploy
 
 on:
   schedule:
-    - cron: "0 15 * * 1-5"
-    - cron: "0 21 * * 1-5"
+    # ── Fundos (CVM) — duas vezes por dia ────────────────────────────────────
+    - cron: "0 15 * * 1-5"   # 12:00 BRT
+    - cron: "0 21 * * 1-5"   # 18:00 BRT
+    # ── Breadth (Yahoo Finance) — a cada 15 min durante o pregão ─────────────
+    # Pregão B3: 10:00–18:55 BRT = 13:00–21:55 UTC
+    - cron: "0,15,30,45 13-21 * * 1-5"
+    - cron: "0 22 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -12,22 +17,35 @@ permissions:
   id-token: write
 
 jobs:
-  update-and-deploy:
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 1 — Fundos CVM (roda só nos horários 15:00 e 21:00 UTC, ou dispatch)
+  # ════════════════════════════════════════════════════════════════════════════
+  update-fundos:
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' &&
+       (contains(github.event.schedule, '0 15') ||
+        contains(github.event.schedule, '0 21')))
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Fetch CVM data and generate data.json + history.json
+      - name: Install dependencies (fundos)
+        run: pip install requests pandas numpy yfinance pyarrow
+
+      - name: Fetch CVM data e gera data.json + history.json
         run: python scripts/fetch_data.py
 
-      - name: Commit updated data files
+      - name: Commit dados de fundos
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -35,6 +53,64 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: update fund data $(date -u +%Y-%m-%d)"
           git pull --rebase origin main
           git push
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 2 — Breadth IBOV (roda em todos os schedules e no dispatch manual)
+  # ════════════════════════════════════════════════════════════════════════════
+  update-breadth:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache parquet data
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/prices.parquet
+            data/breadth.parquet
+            data/ibov_price.parquet
+          key: breadth-data-${{ runner.os }}-${{ hashFiles('data/ibov_composition.py') }}
+          restore-keys: |
+            breadth-data-${{ runner.os }}-
+
+      - name: Install dependencies (breadth)
+        run: pip install pandas numpy yfinance pyarrow requests
+
+      - name: Gera breadth.json e ibov_price.json
+        run: python scripts/fetch_breadth.py
+
+      - name: Commit dados de breadth
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/breadth.json docs/ibov_price.json data/prices.parquet data/breadth.parquet data/ibov_price.parquet
+          git diff --cached --quiet || git commit -m "chore: update breadth $(date -u +%Y-%m-%dT%H:%M)Z"
+          git pull --rebase origin main
+          git push
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 3 — Deploy GitHub Pages (após o job de breadth)
+  # ════════════════════════════════════════════════════════════════════════════
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [update-breadth]
+    if: always() && needs.update-breadth.result == 'success'
+
+    steps:
+      - name: Checkout (com dados recém-commitados)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4

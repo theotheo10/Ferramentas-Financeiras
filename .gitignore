@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Parquet caches (gerados pelo GH Actions — não versionar)
+data/prices.parquet
+data/breadth.parquet
+data/ibov_price.parquet
+
+# JSON estáticos (gerados pelo GH Actions — não versionar manualmente)
+# docs/breadth.json e docs/ibov_price.json SÃO commitados pelo Actions
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Render (não usado mais)
+render.yaml
+
+# Editor
+.vscode/
+.idea/
