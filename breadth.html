@@ -426,12 +426,28 @@ canvas { width: 100% !important; }
 
 /* breadth chart legend */
 .tech-legend {
-  display: flex; gap: 0.85rem;
+  display: flex; gap: 0.5rem;
   font-family: 'Courier New', monospace;
   font-size: 0.62rem; margin-bottom: 0.85rem;
+  flex-wrap: wrap;
 }
-.tleg { display: flex; align-items: center; gap: 0.3rem; }
-.tleg-dot { width: 6px; height: 6px; border-radius: 50%; }
+.tleg {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.22rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+  color: var(--text);
+}
+.tleg:hover { border-color: var(--border-str); }
+.tleg.off {
+  opacity: 0.35;
+  color: var(--muted);
+  border-style: dashed;
+}
+.tleg-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .breadth-canvas { position: relative; height: 240px; }
 
 /* nota metodológica */
@@ -661,9 +677,9 @@ footer {
       </div>
     </div>
     <div class="tech-legend">
-      <div class="tleg"><div class="tleg-dot" style="background:var(--c20)"></div>MA20</div>
-      <div class="tleg"><div class="tleg-dot" style="background:var(--c50)"></div>MA50</div>
-      <div class="tleg"><div class="tleg-dot" style="background:var(--c200)"></div>MA200</div>
+      <div class="tleg" id="tleg-20"  onclick="toggleMA(0)" title="MA20 — curto prazo"><div class="tleg-dot" id="tdot-20"  style="background:#2d9e5e"></div>MA20</div>
+      <div class="tleg" id="tleg-50"  onclick="toggleMA(1)" title="MA50 — médio prazo"><div class="tleg-dot" id="tdot-50"  style="background:#c8960a"></div>MA50</div>
+      <div class="tleg" id="tleg-200" onclick="toggleMA(2)" title="MA200 — longo prazo"><div class="tleg-dot" id="tdot-200" style="background:#7c6af7"></div>MA200</div>
     </div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:.35rem">
       <div class="zoom-controls" id="breadthZoomCtrl">
@@ -918,14 +934,29 @@ function renderBreadth(data) {
   const gc = chartGridColor();
   const tc = chartTickColor();
 
+  // Resolve CSS variables to actual colour values at render time
+  // (Chart.js cannot read CSS custom properties directly)
+  const style = getComputedStyle(document.documentElement);
+  const c20  = style.getPropertyValue('--c20').trim()  || '#2d9e5e';
+  const c50  = style.getPropertyValue('--c50').trim()  || '#c8960a';
+  const c200 = style.getPropertyValue('--c200').trim() || '#7c6af7';
+
+  // Sync legend dot colours to current theme
+  const d20 = document.getElementById('tdot-20');
+  const d50 = document.getElementById('tdot-50');
+  const d200= document.getElementById('tdot-200');
+  if (d20)  d20.style.background  = c20;
+  if (d50)  d50.style.background  = c50;
+  if (d200) d200.style.background = c200;
+
   breadthObj = new Chart(ctx, {
     type: 'line',
     data: {
       labels: data.map(d => d.date),
       datasets: [
-        {label:'MA20',  data:data.map(d=>d.breadth_20 !=null?+(d.breadth_20 *100).toFixed(2):null), borderColor:'var(--c20)',  backgroundColor:'transparent', borderWidth:1,   pointRadius:0, tension:0.2, spanGaps:false},
-        {label:'MA50',  data:data.map(d=>d.breadth_50 !=null?+(d.breadth_50 *100).toFixed(2):null), borderColor:'var(--c50)',  backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.2, spanGaps:false},
-        {label:'MA200', data:data.map(d=>d.breadth_200!=null?+(d.breadth_200*100).toFixed(2):null), borderColor:'var(--c200)', backgroundColor:'rgba(124,106,247,.04)', borderWidth:2.5, pointRadius:0, tension:0.3, fill:true, spanGaps:false},
+        {label:'MA20',  data:data.map(d=>d.breadth_20 !=null?+(d.breadth_20 *100).toFixed(2):null), borderColor: c20,  backgroundColor:'transparent',           borderWidth:1,   pointRadius:0, tension:0.2, spanGaps:false},
+        {label:'MA50',  data:data.map(d=>d.breadth_50 !=null?+(d.breadth_50 *100).toFixed(2):null), borderColor: c50,  backgroundColor:'transparent',           borderWidth:1.5, pointRadius:0, tension:0.2, spanGaps:false},
+        {label:'MA200', data:data.map(d=>d.breadth_200!=null?+(d.breadth_200*100).toFixed(2):null), borderColor: c200, backgroundColor:'rgba(124,106,247,.04)', borderWidth:2.5, pointRadius:0, tension:0.3, fill:true, spanGaps:false},
       ],
     },
     options: {
@@ -940,7 +971,10 @@ function renderBreadth(data) {
           displayColors: false, padding: 10,
           callbacks: {
             title: items => items[0]?.label ?? '',
-            label: c => `${c.dataset.label}  ${c.parsed.y?.toFixed(1)}%`,
+            label: c => {
+              if (breadthObj.data.datasets[c.datasetIndex].hidden) return null;
+              return `${c.dataset.label}  ${c.parsed.y?.toFixed(1)}%`;
+            },
           },
         },
         zoom: {
@@ -973,6 +1007,27 @@ function renderBreadth(data) {
     }],
   });
   chartRegistry['breadth'] = breadthObj;
+
+  // Restore any previously toggled-off series
+  _maVisibility.forEach((visible, i) => {
+    if (!visible) {
+      breadthObj.data.datasets[i].hidden = true;
+    }
+  });
+  breadthObj.update('none');
+}
+
+// ── MA series toggle ──────────────────────────────────────────────────────────
+const _maVisibility = [true, true, true]; // MA20, MA50, MA200
+const _tlegIds = ['tleg-20', 'tleg-50', 'tleg-200'];
+
+function toggleMA(idx) {
+  _maVisibility[idx] = !_maVisibility[idx];
+  const el = document.getElementById(_tlegIds[idx]);
+  if (el) el.classList.toggle('off', !_maVisibility[idx]);
+  if (!breadthObj) return;
+  breadthObj.data.datasets[idx].hidden = !_maVisibility[idx];
+  breadthObj.update();
 }
 
 // ── IBOV colorizado ───────────────────────────────────────────────────────────
