@@ -42,7 +42,7 @@
     transition: background 0.2s, color 0.2s;
   }
 
-  /* ── Header ─────────────────────────────────────────── */
+  /* ── Header ─────────────────────────────────────────────────────── */
   .top-bar {
     display: flex;
     justify-content: space-between;
@@ -73,7 +73,7 @@
   }
   .theme-btn:hover { border-color: var(--text); color: var(--text); }
 
-  /* ── Hero ────────────────────────────────────────────── */
+  /* ── Hero ────────────────────────────────────────────────────────── */
   .hero {
     margin-bottom: 3.5rem;
   }
@@ -92,7 +92,7 @@
     max-width: 480px;
   }
 
-  /* ── Cards ───────────────────────────────────────────── */
+  /* ── Cards ───────────────────────────────────────────────────────── */
   .cards {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -189,7 +189,7 @@
   }
   .card:hover .card-cta svg { transform: translateX(2px); }
 
-  /* ── Footer ──────────────────────────────────────────── */
+  /* ── Footer ──────────────────────────────────────────────────────── */
   .footer {
     margin-top: 4rem;
     padding-top: 1rem;
@@ -199,7 +199,7 @@
     color: var(--muted);
   }
 
-  /* ── Mobile ──────────────────────────────────────────── */
+  /* ── Mobile ──────────────────────────────────────────────────────── */
   @media (max-width: 560px) {
     .hero h1 { font-size: 1.8rem; }
     .cards { grid-template-columns: 1fr; }
@@ -215,7 +215,7 @@
 
 <div class="hero">
   <h1>O que você<br>quer analisar?</h1>
-  <p>Dois módulos independentes — fundos de investimento brasileiros e simulação de patrimônio — reunidos num só lugar.</p>
+  <p>Três módulos independentes — fundos de investimento brasileiros, simulação de patrimônio e breadth do Ibovespa — reunidos num só lugar.</p>
 </div>
 
 <div class="cards">
@@ -254,14 +254,30 @@
     </span>
   </a>
 
+  <a class="card" href="breadth.html">
+    <div class="card-tag">módulo 03</div>
+    <div class="card-icon">📡</div>
+    <h2>IBOV Breadth</h2>
+    <p>Sentimento de mercado via percentual de ações do Ibovespa acima das médias móveis.</p>
+    <ul class="card-features">
+      <li>Composite MA20/50/200 ponderado</li>
+      <li>IBOV colorizado por sentimento</li>
+      <li>Histórico desde 2014 sem survivorship bias</li>
+      <li>Atualiza a cada 15 min no pregão</li>
+    </ul>
+    <span class="card-cta">
+      Abrir
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2.5 6.5h8M7 3l3.5 3.5L7 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+  </a>
+
 </div>
 
 <div class="footer">
-  dados de fundos via CVM · atualizado diariamente
+  dados de fundos via CVM · breadth via Yahoo Finance / B3 · atualizado diariamente
 </div>
 
 <script>
-  // Persist theme across pages via localStorage
   const saved = localStorage.getItem('theme');
   if (saved === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
