@@ -543,7 +543,7 @@ footer {
   <span class="meta-sep">·</span>
   <span><span id="nConst">—</span> ações · B3</span>
   <span class="meta-sep">·</span>
-  <span>atualiza a cada 15 min no pregão</span>
+  <span>atualiza a cada hora durante o pregão</span>
 </div>
 
 <div class="error" id="errMsg">
@@ -810,7 +810,7 @@ function renderHero(latest, data) {
   document.getElementById('barNeedle').style.left  = pct + '%';
 
   const SYM = {up: '↑', down: '↓', flat: '→'};
-  const TXT = {up: 'melhorando', down: 'piorando', flat: 'estável'};
+  const TXT = {up: 'subindo', down: 'caindo', flat: 'estável'};
   const el  = document.getElementById('heroTrend');
   el.className = 'hero-trend trend-' + tr.dir;
   document.getElementById('trendSym').textContent = SYM[tr.dir];
