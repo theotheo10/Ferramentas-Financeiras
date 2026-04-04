@@ -1,6 +1,8 @@
 name: Atualizar dados & deploy
 
 on:
+  push:
+    branches: [main]
   schedule:
     # ── Fundos (CVM) — duas vezes por dia ────────────────────────────────────
     - cron: "0 15 * * 1-5"   # 12:00 BRT
@@ -55,10 +57,11 @@ jobs:
           git push
 
   # ════════════════════════════════════════════════════════════════════════════
-  # JOB 2 — Breadth IBOV (roda em todos os schedules e no dispatch manual)
+  # JOB 2 — Breadth IBOV (roda em schedule e dispatch, não em push)
   # ════════════════════════════════════════════════════════════════════════════
   update-breadth:
     runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -87,15 +90,17 @@ jobs:
           git push
 
   # ════════════════════════════════════════════════════════════════════════════
-  # JOB 3 — Deploy GitHub Pages (após o job de breadth)
+  # JOB 3 — Deploy GitHub Pages
+  # Em push: roda direto (sem depender dos jobs de dados)
+  # Em schedule/dispatch: roda após update-breadth
   # ════════════════════════════════════════════════════════════════════════════
   deploy:
     runs-on: ubuntu-latest
     needs: [update-breadth]
-    if: always() && needs.update-breadth.result == 'success'
+    if: always() && (needs.update-breadth.result == 'success' || needs.update-breadth.result == 'skipped')
 
     steps:
-      - name: Checkout (com dados recém-commitados)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
