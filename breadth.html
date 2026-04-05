@@ -75,6 +75,13 @@ body {
 }
 .wordmark:hover { color: var(--text); }
 .top-bar-right { display: flex; align-items: center; gap: 0.75rem; }
+.back-link {
+  font-family: 'Courier New', monospace; font-size: 0.72rem;
+  color: var(--muted); text-decoration: none; display: inline-flex;
+  align-items: center; gap: 5px; padding: 5px 14px; border-radius: 20px;
+  border: 1px solid var(--border); transition: all 0.15s; white-space: nowrap;
+}
+.back-link:hover { border-color: var(--text); color: var(--text); }
 .theme-btn {
   font-family: 'Courier New', monospace;
   font-size: 0.72rem;
@@ -532,7 +539,9 @@ footer {
 <div class="top-bar">
   <a class="wordmark" href="index.html">← ferramentas financeiras</a>
   <div class="top-bar-right">
-    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☽ escuro</button>
+    <a class="back-link" href="fundos.html" title="Ir para o Ranking de Fundos">📊 Fundos</a>
+    <a class="back-link" href="simulador.html" title="Ir para o Simulador de Aposentadoria">🧮 Simulador</a>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">◑</button>
   </div>
 </div>
 
@@ -708,7 +717,7 @@ footer {
   if (saved === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
     const btn = document.getElementById('themeBtn');
-    if (btn) btn.textContent = '○ claro';
+    if (btn) btn.textContent = '◐';
   }
 })();
 
@@ -717,11 +726,11 @@ function toggleTheme() {
   if (isDark) {
     document.documentElement.removeAttribute('data-theme');
     localStorage.setItem('theme', 'light');
-    document.getElementById('themeBtn').textContent = '☽ escuro';
+    document.getElementById('themeBtn').textContent = '◑';
   } else {
     document.documentElement.setAttribute('data-theme', 'dark');
     localStorage.setItem('theme', 'dark');
-    document.getElementById('themeBtn').textContent = '○ claro';
+    document.getElementById('themeBtn').textContent = '◐';
   }
 }
 
