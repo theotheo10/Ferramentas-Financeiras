@@ -38,13 +38,19 @@
     max-width: 1160px; margin: 0 auto;
     transition: background 0.2s, color 0.2s;
   }
-  .header {
+  /* ── Top bar ── */
+  .top-bar {
     display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;
-    border-bottom: 1px solid var(--border); padding-bottom: 1rem;
+    margin-bottom: 2.5rem; padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
   }
-  h1 { font-size: 1.6rem; font-weight: normal; letter-spacing: -0.02em; }
-  .subtitle { font-size: 0.82rem; color: var(--muted); font-family: 'Courier New', monospace; margin-top: 0.2rem; }
+  .wordmark {
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;
+    text-decoration: none;
+  }
+  .wordmark:hover { color: var(--text); }
+  .top-bar-right { display: flex; align-items: center; gap: 0.75rem; }
   .theme-btn {
     font-family: 'Courier New', monospace; font-size: 0.72rem;
     padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
@@ -59,6 +65,22 @@
     border: 1px solid var(--border); transition: all 0.15s; white-space: nowrap;
   }
   .back-link:hover { border-color: var(--text); color: var(--text); }
+  /* ── Module header ── */
+  .module-tag {
+    font-family: 'Courier New', monospace; font-size: 0.62rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 0.5rem;
+  }
+  .module-title {
+    font-size: 1.9rem; font-weight: normal;
+    letter-spacing: -0.025em; line-height: 1.15; margin-bottom: 0.5rem;
+  }
+  .module-meta {
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    color: var(--muted); margin-bottom: 2rem;
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .meta-sep { color: var(--border-str, rgba(0,0,0,0.14)); }
 
   .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); vertical-align: middle; }
   .status-dot.loading { background: var(--amber); animation: pulse 1.2s infinite; }
@@ -2367,20 +2389,23 @@
 </head>
 <body>
 
-<div class="header">
-  <div>
-    <h1>Ranking de Fundos</h1>
-    <div class="subtitle">dados diários da CVM</div>
-  </div>
-  <div class="header-controls">
+<div class="top-bar">
+  <a class="wordmark" href="index.html">← ferramentas financeiras</a>
+  <div class="top-bar-right">
     <div class="header-status" id="headerStatus">
       <span class="status-dot loading" id="headerDot"></span>
       <span id="headerStatusText">carregando…</span>
     </div>
     <a class="back-link" href="simulador.html" title="Ir para o Simulador de Aposentadoria">🧮 Simulador</a>
-    <a class="back-link" href="index.html">← Menu</a>
-    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☽ escuro</button>
+    <a class="back-link" href="breadth.html" title="Ir para o IBOV Breadth">📈 Breadth</a>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">◑</button>
   </div>
+</div>
+
+<div class="module-tag">módulo 01</div>
+<h1 class="module-title">Ranking de Fundos</h1>
+<div class="module-meta">
+  <span>dados diários da CVM</span>
 </div>
 
 <div class="tabs">
@@ -3316,14 +3341,14 @@ function shortName(cnpj) {
 function toggleTheme() {
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   document.documentElement.setAttribute('data-theme', dark ? '' : 'dark');
-  document.getElementById('themeBtn').textContent = dark ? '☽ escuro' : '☀ claro';
+  document.getElementById('themeBtn').textContent = dark ? '◑' : '◐';
   localStorage.setItem('theme', dark ? 'light' : 'dark');
   savePrefs();
 }
 (function() {
   if (localStorage.getItem('theme') === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
-    document.getElementById('themeBtn').textContent = '☀ claro';
+    document.getElementById('themeBtn').textContent = '◐';
   }
 })();
 
