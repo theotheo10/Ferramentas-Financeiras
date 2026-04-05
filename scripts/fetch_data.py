@@ -484,9 +484,9 @@ def fetch_ntnb() -> dict:
     """
     Busca as taxas atuais das NTN-B (Tesouro IPCA+).
 
-    Fontes em ordem:
-      1) BCB SGS ultimos/1 — endpoint mais rápido, múltiplas séries NTN-B
-      2) ANBIMA arquivo txt — últimos 5 dias úteis, com debug de formato
+    Fontes em ordem de confiabilidade:
+      1) ANBIMA arquivo txt — últimos 5 dias úteis (fonte primária, mais completa)
+      2) BCB SGS /ultimos/1 — fallback rápido com timeout curto
     """
     FALLBACK = {
         "ntnb_rate_long":   7.05,
@@ -514,43 +514,6 @@ def fetch_ntnb() -> dict:
             "ntnb_titles":     titles,
         }
 
-    def _bcb_sgs_ultimos(serie: int) -> float | None:
-        """Busca último valor de uma série SGS via endpoint /ultimos/1 — muito mais rápido."""
-        url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados/ultimos/1?formato=json"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        if data:
-            return float(data[-1]["valor"])
-        return None
-
-    # ── Fonte 1: BCB SGS — múltiplas séries NTN-B via /ultimos/1 ─────────────
-    # Séries disponíveis no SGS para NTN-B:
-    # 13793 = NTN-B 2035 (taxa indicativa ANBIMA)
-    # 13793 falha com timeout em range de datas — /ultimos/1 é muito mais rápido
-    # Série 13793 é a NTN-B principal (longa)
-    # Série 13793 alternativas: tentamos 3 séries diferentes
-    SGS_SERIES = [
-        (13793, "NTN-B 2035", "2035-05-15"),   # NTN-B longa principal
-        (13793, "NTN-B 2035", "2035-05-15"),   # placeholder para fallback
-    ]
-    # Tenta /ultimos/1 que não precisa de range de datas — muito mais confiável
-    for serie, nome, venc in [(13793, "NTN-B 2035", "2035-05-15")]:
-        try:
-            taxa = _bcb_sgs_ultimos(serie)
-            if taxa and 2.0 < taxa < 20.0:
-                print(f"  NTN-B BCB SGS {serie} ({nome}): {taxa:.2f}%")
-                return {
-                    "ntnb_rate_long":   round(taxa, 4),
-                    "ntnb_rate_mid":    round(taxa * 0.97, 4),
-                    "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "ntnb_titles":      [{"nome": nome, "vencimento": venc, "taxa": taxa}],
-                    "ntnb_source":      "bcb_sgs",
-                }
-        except Exception as e:
-            print(f"  ✗ NTN-B BCB SGS {serie}: {e}")
-
-    # ── Fonte 2: ANBIMA arquivo txt — últimos 5 dias úteis ───────────────────
     def _last_business_days(n):
         days = []
         d = today
@@ -560,6 +523,7 @@ def fetch_ntnb() -> dict:
             d -= datetime.timedelta(days=1)
         return days
 
+    # ── Fonte 1: ANBIMA arquivo txt — últimos 5 dias úteis ───────────────────
     for candidate in _last_business_days(5):
         url = ("https://www.anbima.com.br/informacoes/merc-sec/arqs/ms"
                + candidate.strftime("%y%m%d") + ".txt")
@@ -568,116 +532,7 @@ def fetch_ntnb() -> dict:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 raw = resp.read().decode("latin-1", errors="replace")
 
-            lines = raw.splitlines()
-            # Formato real ANBIMA:
-            # col 0: Titulo (ex: "NTN-B")
-            # col 4: Data Vencimento formato AAAAMMDD (ex: 20350515)
-            # col 7: Tx. Indicativas com vírgula decimal (ex: 7,6926)
-
-            titles = []
-            for line in lines:
-                if not line.strip() or "@" not in line:
-                    continue
-                parts = [p.strip() for p in line.split("@")]
-                if len(parts) < 8:
-                    continue
-                tipo = parts[0]
-                if "NTN-B" not in tipo.upper():
-                    continue
-                if "PRINCIPAL" in tipo.upper():
-                    continue
-                try:
-                    venc_raw = parts[4]  # AAAAMMDD
-                    venc_iso = f"{venc_raw[:4]}-{venc_raw[4:6]}-{venc_raw[6:8]}"
-                    datetime.date.fromisoformat(venc_iso)  # valida
-                    taxa = float(parts[7].replace(",", "."))  # Tx. Indicativas
-                    if 2.0 < taxa < 20.0:
-                        titles.append({"nome": tipo, "vencimento": venc_iso, "taxa": taxa})
-                except Exception:
-                    continue
-
-            result = _process_titles(titles)
-            if result:
-                result["ntnb_source"] = "anbima"
-                longs = [t for t in titles if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
-                print(f"  NTN-B ANBIMA {candidate} ({len(titles)} títulos, {len(longs)} longas)")
-                print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
-                return result
-            print(f"  ✗ NTN-B ANBIMA {candidate}: {len(titles)} títulos NTN-B encontrados")
-        except Exception as e:
-            print(f"  ✗ NTN-B ANBIMA {candidate}: {e}")
-
-    print("  ✗ NTN-B: todas as fontes falharam — usando fallback")
-    return FALLBACK
-
-
-    FALLBACK = {
-        "ntnb_rate_long":   7.05,
-        "ntnb_rate_mid":    6.90,
-        "ntnb_fetched_at":  None,
-        "ntnb_titles":      [],
-        "ntnb_source":      "fallback",
-    }
-
-    today        = datetime.date.today()
-    horizon_long = today.replace(year=today.year + 8)
-    horizon_5y   = today.replace(year=today.year + 5)
-
-    def _process_titles(titles):
-        if not titles: return None
-        longs = [t for t in titles if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
-        mids  = [t for t in titles if abs((datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days) < 730]
-        ntnb_long = sum(t["taxa"] for t in longs) / len(longs) if longs else None
-        ntnb_mid  = min(mids, key=lambda t: abs((datetime.date.fromisoformat(t["vencimento"]) - horizon_5y).days))["taxa"] if mids else None
-        if not ntnb_long: return None
-        return {
-            "ntnb_rate_long":  round(ntnb_long, 4),
-            "ntnb_rate_mid":   round(ntnb_mid, 4) if ntnb_mid else round(ntnb_long, 4),
-            "ntnb_fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "ntnb_titles":     titles,
-        }
-
-    # ── Fonte 1: BCB SGS série 13793 (NTN-B 2035) ────────────────────────────
-    try:
-        end_str   = today.strftime("%d/%m/%Y")
-        start_str = (today - datetime.timedelta(days=10)).strftime("%d/%m/%Y")
-        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.13793/dados"
-               f"?formato=json&dataInicial={start_str}&dataFinal={end_str}")
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        if data:
-            taxa = float(data[-1]["valor"])
-            print(f"  NTN-B BCB SGS 13793 (2035): {taxa:.2f}%")
-            return {
-                "ntnb_rate_long":   round(taxa, 4),
-                "ntnb_rate_mid":    round(taxa * 0.97, 4),
-                "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "ntnb_titles":      [{"nome": "NTN-B 2035 (SGS)", "vencimento": "2035-05-15", "taxa": taxa}],
-                "ntnb_source":      "bcb_sgs",
-            }
-    except Exception as e:
-        print(f"  ✗ NTN-B BCB SGS falhou: {e}")
-
-    # ── Fonte 2: ANBIMA — últimos 5 dias úteis ────────────────────────────────
-    def _last_business_days(n):
-        days = []
-        d = today
-        while len(days) < n:
-            if d.weekday() < 5:
-                days.append(d)
-            d -= datetime.timedelta(days=1)
-        return days
-
-    for candidate in _last_business_days(5):
-        url = ("https://www.anbima.com.br/informacoes/merc-sec/arqs/ms"
-               + candidate.strftime("%y%m%d") + ".txt")
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                raw = resp.read().decode("latin-1", errors="replace")
-
-            # Detecta separador
+            # Detecta separador (@  ou ;)
             sep = "@"
             for line in raw.splitlines()[:20]:
                 if ";" in line and "NTN" in line.upper():
@@ -721,13 +576,32 @@ def fetch_ntnb() -> dict:
             if result:
                 result["ntnb_source"] = "anbima"
                 longs = [t for t in titles if datetime.date.fromisoformat(t["vencimento"]) >= horizon_long]
-                print(f"  NTN-B ANBIMA {candidate} ({len(longs)} longas): "
-                      + ", ".join(f"{t['vencimento']}={t['taxa']:.2f}%" for t in longs))
+                print(f"  NTN-B ANBIMA {candidate} ({len(titles)} títulos, {len(longs)} longas)")
                 print(f"  NTN-B_long={result['ntnb_rate_long']:.2f}% NTN-B_mid={result['ntnb_rate_mid']:.2f}%")
                 return result
-            print(f"  ✗ NTN-B ANBIMA {candidate}: sem títulos válidos")
+            print(f"  ✗ NTN-B ANBIMA {candidate}: {len(titles)} títulos NTN-B encontrados")
         except Exception as e:
             print(f"  ✗ NTN-B ANBIMA {candidate}: {e}")
+
+    # ── Fonte 2: BCB SGS /ultimos/1 — fallback ────────────────────────────────
+    try:
+        url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13793/dados/ultimos/1?formato=json"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        if data:
+            taxa = float(data[-1]["valor"])
+            if 2.0 < taxa < 20.0:
+                print(f"  NTN-B BCB SGS 13793: {taxa:.2f}%")
+                return {
+                    "ntnb_rate_long":   round(taxa, 4),
+                    "ntnb_rate_mid":    round(taxa * 0.97, 4),
+                    "ntnb_fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "ntnb_titles":      [{"nome": "NTN-B 2035 (SGS)", "vencimento": "2035-05-15", "taxa": taxa}],
+                    "ntnb_source":      "bcb_sgs",
+                }
+    except Exception as e:
+        print(f"  ✗ NTN-B BCB SGS 13793: {e}")
 
     print("  ✗ NTN-B: todas as fontes falharam — usando fallback")
     return FALLBACK
