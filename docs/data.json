@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-05T21:56:25.384047+00:00",
+  "generatedAt": "2026-04-05T22:10:07.469822+00:00",
   "anchorDate": "2026-04-01",
   "ibov": {
     "cagr12": 43.350083455243585,
@@ -17,87 +17,11 @@
     "cagr60": 8.117317339817621
   },
   "ntnb": {
-    "ntnb_rate_long": 7.3276,
-    "ntnb_rate_mid": 7.766,
-    "ntnb_fetched_at": "2026-04-05T21:53:22.330479+00:00",
-    "ntnb_titles": [
-      {
-        "nome": "NTN-B",
-        "vencimento": "2026-08-15",
-        "taxa": 8.6003
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2027-05-15",
-        "taxa": 7.82
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2028-08-15",
-        "taxa": 7.8031
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2029-05-15",
-        "taxa": 7.7763
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2030-08-15",
-        "taxa": 7.82
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2031-05-15",
-        "taxa": 7.766
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2032-08-15",
-        "taxa": 7.7399
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2033-05-15",
-        "taxa": 7.7261
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2035-05-15",
-        "taxa": 7.568
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2037-05-15",
-        "taxa": 7.5013
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2040-08-15",
-        "taxa": 7.3834
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2045-05-15",
-        "taxa": 7.2546
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2050-08-15",
-        "taxa": 7.2119
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2055-05-15",
-        "taxa": 7.1937
-      },
-      {
-        "nome": "NTN-B",
-        "vencimento": "2060-08-15",
-        "taxa": 7.18
-      }
-    ],
-    "ntnb_source": "anbima"
+    "ntnb_rate_long": 7.05,
+    "ntnb_rate_mid": 6.9,
+    "ntnb_fetched_at": null,
+    "ntnb_titles": [],
+    "ntnb_source": "fallback"
   },
   "ipca_focus": {
     "ipca_12m": 4.47,
