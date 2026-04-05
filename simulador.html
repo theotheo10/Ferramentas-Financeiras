@@ -229,6 +229,34 @@
 
   [data-theme=dark] input[type=range] { background: rgba(255,255,255,0.18); }
 
+  /* ── Botões de simulação de IR ─────────────────────────────────────── */
+  .ir-sim-bar {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    padding-top: 0.85rem; margin-top: 0.75rem;
+    border-top: 0.5px solid var(--border);
+    grid-column: 1 / -1;
+  }
+  .ir-sim-btn {
+    font-family: 'Courier New', monospace; font-size: 0.68rem;
+    padding: 4px 12px; border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .ir-sim-btn:hover { border-color: var(--text); color: var(--text); }
+  .ir-sim-btn.active-rv  { background: var(--blue-light);  color: var(--blue);  border-color: var(--blue);  }
+  .ir-sim-btn.active-cc  { background: var(--amber-light); color: var(--amber); border-color: var(--amber); }
+  .ir-sim-label {
+    font-family: 'Courier New', monospace; font-size: 0.65rem;
+    color: var(--muted); display: none; align-items: center; gap: 6px;
+  }
+  .ir-sim-label.visible { display: flex; }
+  .ir-sim-reset {
+    font-family: 'Courier New', monospace; font-size: 0.65rem;
+    color: var(--accent); background: transparent; border: none;
+    cursor: pointer; padding: 0; text-decoration: underline dotted;
+  }
+
   @media (max-width: 620px) {
     .controls-grid, .answer-grid, .comparison-grid { grid-template-columns: 1fr; }
     .stats { grid-template-columns: 1fr 1fr; }
@@ -285,6 +313,12 @@
   <div class="ctrl inflation-ctrl">
     <div class="ctrl-header"><label>Taxa de inflação anual</label><span class="ctrl-val" id="sim-lI" contenteditable="true" spellcheck="false" style="color:var(--red)">5%</span></div>
     <input type="range" id="sim-sI" min="0" max="20" step="0.5" value="5">
+  </div>
+  <div class="ir-sim-bar">
+    <button class="ir-sim-btn" id="sim-acc-btn-rv"  onclick="irSimApply('sim-acc','rv')">Simular IR (resgate)</button>
+    <button class="ir-sim-btn" id="sim-acc-btn-cc"  onclick="irSimApply('sim-acc','cc')">Simular Come-Cotas</button>
+    <span class="ir-sim-label" id="sim-acc-ir-label"></span>
+    <button class="ir-sim-reset" id="sim-acc-ir-reset" style="display:none" onclick="irSimReset('sim-acc')">↺ restaurar taxa original</button>
   </div>
 </div>
 
@@ -376,6 +410,12 @@
   <div class="ctrl rate-ctrl"><div class="ctrl-header"><label>Taxa de juros anual</label><span class="ctrl-val" id="sim-dlR" style="color:var(--green)">10%</span></div><input type="range" id="sim-dsR" min="0" max="30" step="0.5" value="10"></div>
   <div class="ctrl inflation-ctrl"><div class="ctrl-header"><label>Taxa de inflação anual</label><span class="ctrl-val" id="sim-dlI" style="color:var(--red)">5%</span></div><input type="range" id="sim-dsI" min="0" max="20" step="0.5" value="5"></div>
   <div class="ctrl"><div class="ctrl-header"><label>Prazo de retirada</label><span class="ctrl-val" id="sim-dlY">30 anos</span></div><input type="range" id="sim-dsY" min="5" max="60" step="1" value="30"></div>
+  <div class="ir-sim-bar">
+    <button class="ir-sim-btn" id="sim-ret-btn-rv" onclick="irSimApply('sim-ret','rv')">Simular IR (resgate)</button>
+    <button class="ir-sim-btn" id="sim-ret-btn-cc" onclick="irSimApply('sim-ret','cc')">Simular Come-Cotas</button>
+    <span class="ir-sim-label" id="sim-ret-ir-label"></span>
+    <button class="ir-sim-reset" id="sim-ret-ir-reset" style="display:none" onclick="irSimReset('sim-ret')">↺ restaurar taxa original</button>
+  </div>
 </div>
 
 <div id="sim-ddVerdict" style="border-radius:10px;padding:14px 18px;margin-bottom:1.5rem;font-family:'Courier New',monospace;font-size:0.82rem;line-height:1.6;"></div>
@@ -508,6 +548,12 @@
     <div class="ctrl-header"><label>Volatilidade (σ anual) <span class="tooltip-wrap"><span class="tooltip-icon">?</span><span class="tooltip-box">Desvio padrão dos retornos anuais. Tarpon GT σ ≈ 22%, Ártica σ ≈ 23%, Organon σ ≈ 26%. Ibovespa σ ≈ 18%. Renda fixa ≈ 2–5%. Portfólio misto ≈ 10–18%.</span></span></label><span class="ctrl-val" id="mc-lV" contenteditable="true" spellcheck="false" style="color:var(--amber)">22%</span></div>
     <input type="range" id="mc-sV" min="1" max="40" step="0.5" value="22">
   </div>
+  <div class="ir-sim-bar">
+    <button class="ir-sim-btn" id="mc-acc-btn-rv" onclick="irSimApply('mc-acc','rv')">Simular IR (resgate)</button>
+    <button class="ir-sim-btn" id="mc-acc-btn-cc" onclick="irSimApply('mc-acc','cc')">Simular Come-Cotas</button>
+    <span class="ir-sim-label" id="mc-acc-ir-label"></span>
+    <button class="ir-sim-reset" id="mc-acc-ir-reset" style="display:none" onclick="irSimReset('mc-acc')">↺ restaurar taxa original</button>
+  </div>
 </div>
 
 <!-- Regime switching panel -->
@@ -572,6 +618,12 @@
   <h4>Retorno na retirada</h4>
   <div class="ctrl rate-ctrl"><div class="ctrl-header"><label>Retorno médio anual</label><span class="ctrl-val" id="mc-lRR" contenteditable="true" spellcheck="false" style="color:var(--green)">15%</span></div><input type="range" id="mc-sRR" min="1" max="20" step="0.5" value="15"></div>
   <div class="ctrl vol-ctrl"><div class="ctrl-header"><label>Volatilidade (σ anual)</label><span class="ctrl-val" id="mc-lVR" contenteditable="true" spellcheck="false" style="color:var(--amber)">15%</span></div><input type="range" id="mc-sVR" min="1" max="30" step="0.5" value="15"></div>
+  <div class="ir-sim-bar">
+    <button class="ir-sim-btn" id="mc-ret-btn-rv" onclick="irSimApply('mc-ret','rv')">Simular IR (resgate)</button>
+    <button class="ir-sim-btn" id="mc-ret-btn-cc" onclick="irSimApply('mc-ret','cc')">Simular Come-Cotas</button>
+    <span class="ir-sim-label" id="mc-ret-ir-label"></span>
+    <button class="ir-sim-reset" id="mc-ret-ir-reset" style="display:none" onclick="irSimReset('mc-ret')">↺ restaurar taxa original</button>
+  </div>
 </div>
 
 <div class="verdict" id="mc-verdict"></div>
@@ -1088,7 +1140,17 @@ const SIM_CFG = [
   { lbl:'sim-lI', sld:'sim-sI', type:'pct',      min:0,   max:100, red:true },
 ];
 
-SIM_CFG.forEach(cfg => wireEditable(cfg, simUpdate));
+SIM_CFG.forEach(cfg => wireEditable(cfg, () => {
+  const rateIds = new Set(['sim-sR']);
+  const retRateIds = new Set(['sim-dsR']);
+  const retIds = new Set(['sim-dsR','sim-dsI','sim-dsY','sim-dsS','sim-dsC']);
+  if (retIds.has(cfg.sld)) {
+    _irOnRateManualChange('sim-ret', retRateIds.has(cfg.sld));
+  } else {
+    _irOnRateManualChange('sim-acc', rateIds.has(cfg.sld));
+  }
+  simUpdate();
+}));
 ['sim-sP','sim-sM','sim-sR','sim-sG','sim-sY','sim-sI'].forEach(id => {
   document.getElementById(id).addEventListener('input', function() {
     if (this._fc) return; this.dataset.override = ''; if(id==='sim-sY')setPrazoThumbColor('sim-sY'); if(id==='sim-sG'||id==='sim-sI')setGrowthColor('sim-sG','sim-lG',getV('sim-sG'),getV('sim-sI')); simUpdate();
@@ -1414,11 +1476,11 @@ document.getElementById('sim-dsC').addEventListener('input',function(){if(this._
 // Wire drawdown editable labels using the shared wireEditable pattern
 // dlS: overrides starting balance; dlC: overrides cost of living
 wireEditable({lbl:'sim-dlS',sld:'sim-dsS',type:'currency',min:0,max:1e12},
-  ()=>{ SimState.ddStartOverride=getV('sim-dsS'); simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears()); });
+  ()=>{ _irOnRateManualChange('sim-ret', false); SimState.ddStartOverride=getV('sim-dsS'); simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears()); });
 document.getElementById('sim-dlS').addEventListener('blur',()=>{ SimState.ddStartOverride=getV('sim-dsS'); });
 
 wireEditable({lbl:'sim-dlC',sld:'sim-dsC',type:'currency',min:0,max:1e9,red:true},
-  ()=>{ SimState.ddCostOverride=getV('sim-dsC'); simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears()); });
+  ()=>{ _irOnRateManualChange('sim-ret', false); SimState.ddCostOverride=getV('sim-dsC'); simUpdateDrawdown(_ddAccumFinal(),_ddAccumYears()); });
 document.getElementById('sim-dlC').addEventListener('blur',()=>{ SimState.ddCostOverride=getV('sim-dsC'); });
 
 // Compare
@@ -1513,7 +1575,14 @@ const MC_CFG=[
   {lbl:'mc-lC',sld:'mc-sC',type:'currency',min:0,max:1e9},{lbl:'mc-lD',sld:'mc-sD',type:'years',min:1,max:200},
   {lbl:'mc-lRR',sld:'mc-sRR',type:'pct',min:0.1,max:1000,green:true},{lbl:'mc-lVR',sld:'mc-sVR',type:'pct',min:0.1,max:1000,amber:true}
 ];
-MC_CFG.forEach(cfg=>wireEditable(cfg,()=>mcUpdateDebounced()));
+MC_CFG.forEach(cfg=>wireEditable(cfg,()=>{
+  const retIds    = new Set(['mc-sC','mc-sD','mc-sRR','mc-sVR']);
+  const retRate   = new Set(['mc-sRR']);
+  const accRate   = new Set(['mc-sR']);
+  if (retIds.has(cfg.sld)) _irOnRateManualChange('mc-ret', retRate.has(cfg.sld));
+  else _irOnRateManualChange('mc-acc', accRate.has(cfg.sld));
+  mcUpdateDebounced();
+}));
 ['mc-sP','mc-sM','mc-sG','mc-sY','mc-sI','mc-sR','mc-sV','mc-sC','mc-sD','mc-sRR','mc-sVR'].forEach(id=>{
   document.getElementById(id).addEventListener('input',function(){
     if(this._fc)return; this.dataset.override='';
@@ -2183,6 +2252,16 @@ function qpBuildControls(){
   }
   // Set initial prazo thumb colors
   ctrls.filter(c=>c.prazo).forEach(c=>setPrazoThumbColor('qp-'+c.id));
+
+  // ── IR simulation bar ──────────────────────────────────────────────────
+  const irBar = document.createElement('div');
+  irBar.className = 'ir-sim-bar';
+  irBar.innerHTML =
+    `<button class="ir-sim-btn" id="qp-btn-rv" onclick="irSimApply('qp','rv')">Simular IR (resgate)</button>` +
+    `<button class="ir-sim-btn" id="qp-btn-cc" onclick="irSimApply('qp','cc')">Simular Come-Cotas</button>` +
+    `<span class="ir-sim-label" id="qp-ir-label"></span>` +
+    `<button class="ir-sim-reset" id="qp-ir-reset" style="display:none" onclick="irSimReset('qp')">↺ restaurar taxa original</button>`;
+  grid.appendChild(irBar);
 }
 
 function qpRefreshGrowthColor(){
@@ -3071,6 +3150,424 @@ function qpUpdate(){
   }).join('');
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// SIMULAÇÃO DE IR — motor portado do Ranking de Fundos
+// ══════════════════════════════════════════════════════════════════════════
+
+// Tabela regressiva (mesmo que fundos.html)
+function _irTrAliquota(dias) {
+  if (dias <= 180) return 0.225;
+  if (dias <= 360) return 0.20;
+  if (dias <= 720) return 0.175;
+  return 0.15;
+}
+
+// ── Núcleo: simulação mês a mês com IR exato ────────────────────────────────
+//
+// Modela o fundo como um pool único (como fundos brasileiros funcionam na prática):
+// todos os cotistas compartilham o mesmo come-cotas no último dia útil de mai/nov
+// sobre o rendimento total do fundo. Cada aporte mensal é adicionado ao pool,
+// e a base de custo total cresce proporcionalmente.
+//
+// Come-cotas: antecipa 15% sobre o rendimento de cada período semestral.
+// Resgate: cobra alíquota complementar = max(0, alíqTotal(prazoTotalAporte) − 15%)
+//          sobre o rendimento do trecho aberto (desde o último CC).
+//          Para prazo > 720 dias: alíqTotal = 15% → complemento = 0.
+//          Para prazo ≤ 720 dias: complemento > 0 (ex: 180d → 7,5%).
+//
+// Datas de come-cotas: último dia útil de maio e novembro (fins de semana ajustados).
+// Feriados nacionais variáveis não são considerados — impacto de 1-2 dias em décadas
+// é imaterial para simulações de longo prazo.
+//
+function _irSimExato(rBruto, anos, P, M, growth, trib) {
+  P      = P      !== undefined ? P      : 1;
+  M      = M      !== undefined ? M      : 0;
+  growth = growth !== undefined ? growth : 0;
+
+  const r  = rBruto / 100;
+  const rm = Math.pow(1 + r, 1 / 12) - 1;   // taxa mensal equivalente
+  const gm = Math.pow(1 + growth / 100, 1 / 12) - 1; // crescimento mensal dos aportes
+
+  const hoje       = new Date();
+  const totalMeses = anos * 12;
+
+  // Último dia útil (seg–sex) do mês. mes: 0-indexed.
+  function ultimoDiaUtil(ano, mes) {
+    const d = new Date(ano, mes + 1, 0); // último dia calendário do mês
+    const dow = d.getDay();
+    if (dow === 6) d.setDate(d.getDate() - 1); // sáb → sex
+    if (dow === 0) d.setDate(d.getDate() - 2); // dom → sex
+    return d;
+  }
+
+  // Pré-computa índices de mês (a partir de hoje) em que ocorre come-cotas
+  const ccMeses = new Set();
+  if (trib === 'cc') {
+    const ano0 = hoje.getFullYear();
+    const mes0 = hoje.getMonth(); // 0-indexed
+    for (let a = ano0; a <= ano0 + anos + 1; a++) {
+      for (const mesAlvo of [4, 10]) { // maio=4, novembro=10
+        const dCC = ultimoDiaUtil(a, mesAlvo);
+        if (dCC <= hoje) continue;
+        // Número de meses inteiros até essa data a partir de hoje
+        const diffMs = dCC - hoje;
+        const diffMeses = Math.round(diffMs / (365.25 / 12 * 86400000));
+        if (diffMeses > 0 && diffMeses <= totalMeses) ccMeses.add(diffMeses);
+      }
+    }
+  }
+
+  // Pool único: patrimônio real e base de custo agregada
+  let patrimonio   = P;
+  let baseCusto    = P;
+  let aporteMensal = M;
+
+  for (let mes = 1; mes <= totalMeses; mes++) {
+    // 1. Rendimento do mês
+    patrimonio *= (1 + rm);
+
+    // 2. Come-cotas: 15% sobre rendimento acumulado desde a última base
+    if (ccMeses.has(mes)) {
+      const rend = patrimonio - baseCusto;
+      if (rend > 0) {
+        patrimonio -= rend * 0.15;
+        baseCusto = patrimonio; // nova base: patrimônio pós-IR
+      }
+    }
+
+    // 3. Aporte mensal (cresce mensalmente)
+    if (mes > 1) aporteMensal *= (1 + gm);
+    if (aporteMensal > 0) {
+      patrimonio += aporteMensal;
+      baseCusto  += aporteMensal;
+    }
+  }
+
+  // IR no resgate
+  let vLiq;
+  if (trib === 'rv') {
+    // RV: 15% sobre o ganho total no resgate
+    const rend  = Math.max(0, patrimonio - baseCusto);
+    vLiq = patrimonio - rend * 0.15;
+  } else {
+    // CC/TR: alíquota complementar sobre o rendimento do trecho aberto.
+    // A alíquota é determinada pelo prazo TOTAL desde o aporte (não do trecho).
+    const diasTotalAporte = anos * 365.25;
+    const aliqTotal       = _irTrAliquota(diasTotalAporte);
+    const aliqCompl       = Math.max(0, aliqTotal - 0.15);
+    const rendTrecho      = Math.max(0, patrimonio - baseCusto);
+    vLiq = patrimonio - rendTrecho * aliqCompl;
+  }
+
+  // Patrimônio bruto de referência (mesmo engine, sem IR nenhum)
+  let vBruto = P;
+  let aM2    = M;
+  for (let mes = 1; mes <= totalMeses; mes++) {
+    vBruto *= (1 + rm);
+    if (mes > 1) aM2 *= (1 + gm);
+    if (aM2 > 0) vBruto += aM2;
+  }
+
+  const cagrLiq = _irSolveCagr(P, M, growth, anos, vLiq);
+  return { vBruto, vLiq, cagrLiq };
+}
+
+// Resolve por bissecção o CAGR anual r tal que simAccum(P,M,growth,r,anos) ≈ alvo
+// Usa o mesmo modelo do engine (simAccum do simulador).
+function _irSolveCagr(P, M, growth, anos, alvo) {
+  if (alvo <= 0) return 0;
+  // Limites: 0.01% a 200% ao ano
+  let lo = 0.0001, hi = 2.0;
+  for (let iter = 0; iter < 60; iter++) {
+    const mid = (lo + hi) / 2;
+    const v   = _irAccumExato(P, M, growth, mid, anos);
+    if (v < alvo) lo = mid; else hi = mid;
+    if (hi - lo < 1e-9) break;
+  }
+  return ((lo + hi) / 2) * 100;
+}
+
+// Engine de acumulação idêntico ao simAccum do simulador (mensal, crescimento anual)
+function _irAccumExato(P, M, growth, rAnual, anos) {
+  const rm = Math.pow(1 + rAnual, 1 / 12) - 1;
+  let b = P;
+  for (let y = 1; y <= anos; y++) {
+    const mc = M * Math.pow(1 + growth / 100, y - 1);
+    for (let m = 0; m < 12; m++) b = b * (1 + rm) + mc;
+    if (!isFinite(b)) return Number.MAX_SAFE_INTEGER;
+  }
+  return b;
+}
+
+// ── API pública: wrappers que lêem parâmetros do contexto ──────────────────
+
+// Para fases de ACUMULAÇÃO: lê P, M, growth do contexto da calculadora
+function _irSimRV(rBruto, anos, P, M, growth) {
+  // Sem aportes mensais: solução fechada exata
+  if ((M || 0) === 0) {
+    const vBruto = Math.pow(1 + rBruto / 100, anos);
+    const rend   = vBruto - 1;
+    const vLiq   = vBruto - 0.15 * rend;
+    return { cagrLiq: (Math.pow(vLiq, 1 / anos) - 1) * 100, vBruto, vLiq };
+  }
+  return _irSimExato(rBruto, anos, P, M, growth, 'rv');
+}
+
+function _irSimCC(rBruto, anos, P, M, growth) {
+  return _irSimExato(rBruto, anos, P, M, growth, 'cc');
+}
+
+// Mapa: prefixo → {sldRate, sldYears, updateFn}
+// Cada calculadora tem um slider de taxa e um de prazo diferentes.
+const _IR_CALC_MAP = {
+  'sim-acc': {
+    sldRate:    'sim-sR',
+    lblRate:    'sim-lR',
+    getYears:   () => Math.round(getV('sim-sY')),
+    getContribs: () => ({
+      P:      getV('sim-sP'),
+      M:      getV('sim-sM'),
+      growth: getV('sim-sG'),
+    }),
+    updateFn:  simUpdate,
+    colorGreen: true,
+  },
+  'sim-ret': {
+    // Fase de retirada: sem aportes — simulação de aporte único é exata
+    sldRate:    'sim-dsR',
+    lblRate:    'sim-dlR',
+    getYears:   () => Math.round(getV('sim-dsY')),
+    getContribs: () => ({ P: 1, M: 0, growth: 0 }),
+    updateFn:  () => simUpdateDrawdown(_ddAccumFinal(), _ddAccumYears()),
+    colorGreen: true,
+  },
+  'mc-acc': {
+    sldRate:    'mc-sR',
+    lblRate:    'mc-lR',
+    getYears:   () => Math.round(getV('mc-sY')),
+    getContribs: () => ({
+      P:      getV('mc-sP'),
+      M:      getV('mc-sM'),
+      growth: getV('mc-sG'),
+    }),
+    updateFn:  mcUpdateDebounced,
+    colorGreen: true,
+  },
+  'mc-ret': {
+    // Fase de retirada: sem aportes
+    sldRate:    'mc-sRR',
+    lblRate:    'mc-lRR',
+    getYears:   () => Math.round(getV('mc-sD')),
+    getContribs: () => ({ P: 1, M: 0, growth: 0 }),
+    updateFn:  mcUpdateDebounced,
+    colorGreen: true,
+  },
+  'qp': {
+    sldRate:   null,      // dinâmico — depende do modo
+    lblRate:   null,
+    getYears:  () => {
+      const modeEl = document.getElementById('qp-qPrazo') || document.getElementById('qp-qRetiro');
+      return modeEl ? Math.round(+(modeEl.dataset.override || modeEl.value)) : 30;
+    },
+    getContribs: () => {
+      // No modo 'plan' usa aporte calculado internamente (não exposto diretamente).
+      // Usamos P0 + aporte mínimo para representar a escala — o resultado é normalizado
+      // pelo bissector de CAGR, então P e M apenas precisam ser proporcionais ao uso real.
+      const P0El = document.getElementById('qp-qP0');
+      const P0   = P0El ? +(P0El.dataset.override || P0El.value) : 0;
+      const gEl  = document.getElementById('qp-qG');
+      const g    = gEl  ? +(gEl.dataset.override  || gEl.value)  : 5;
+      // Aporte médio representativo: usa 10k como placeholder proporcional
+      // (o CAGR líquido é robusto a escala — depende da *proporção* M/P e growth)
+      const M = Math.max(1000, P0 * 0.01);
+      return { P: Math.max(P0, 1), M, growth: g };
+    },
+    updateFn:  qpUpdateDebounced,
+    colorGreen: true,
+  },
+};
+
+// Estado de IR ativo por calculadora: { mode: 'rv'|'cc'|null, originalRate: number }
+const _irState = {};
+
+function _irGetQpRateIds() {
+  // No modo "plan": usa qRA (acumulação) — ou qRR (retirada)?
+  // Aplicamos sobre qRA (a taxa que domina o resultado final da acumulação).
+  const raEl = document.getElementById('qp-qRA');
+  return raEl ? { sldRate: 'qp-qRA', lblRate: 'qp-qRAlbl' } : null;
+}
+
+function irSimApply(prefix, mode) {
+  const cfg = _IR_CALC_MAP[prefix];
+  if (!cfg) return;
+
+  // Para 'qp', descobre dinamicamente
+  let sldRateId = cfg.sldRate;
+  let lblRateId = cfg.lblRate;
+  if (prefix === 'qp') {
+    const ids = _irGetQpRateIds();
+    if (!ids) return;
+    sldRateId = ids.sldRate;
+    lblRateId = ids.lblRate;
+  }
+
+  const sldEl = document.getElementById(sldRateId);
+  if (!sldEl) return;
+
+  const state = _irState[prefix] || { mode: null, originalRate: null };
+
+  // Se clicar no botão já ativo → toggle off (reset)
+  if (state.mode === mode) {
+    irSimReset(prefix);
+    return;
+  }
+
+  // Salva taxa original (bruta do usuário) se ainda não salva
+  const currentRate = +(sldEl.dataset.override !== '' && sldEl.dataset.override !== undefined
+    ? sldEl.dataset.override : sldEl.value);
+
+  const originalRate = state.originalRate !== null ? state.originalRate : currentRate;
+  const anos = cfg.getYears();
+
+  // Lê P, M, growth do contexto de cada calculadora
+  // Fases de retirada não têm aportes mensais → P=1, M=0
+  const { P, M, growth } = cfg.getContribs ? cfg.getContribs() : { P: 1, M: 0, growth: 0 };
+
+  let result;
+  if (mode === 'rv') {
+    result = _irSimRV(originalRate, anos, P, M, growth);
+  } else {
+    result = _irSimCC(originalRate, anos, P, M, growth);
+  }
+  let rLiq = Math.max(0.1, +result.cagrLiq.toFixed(4));
+
+  // Injeta a taxa líquida no slider exatamente como o usuário faria
+  sldEl.dataset.override = rLiq;
+  sldEl._fc = true;
+  sldEl.value = Math.min(Math.max(rLiq, +sldEl.min), +sldEl.max);
+  sldEl._fc = false;
+
+  // Atualiza label visual
+  const lblEl = document.getElementById(lblRateId);
+  if (lblEl && !lblEl.classList.contains('editing')) {
+    lblEl.textContent = rLiq.toFixed(2).replace('.', ',') + '%';
+    if (cfg.colorGreen) lblEl.style.color = 'var(--green)';
+  }
+
+  // Guarda estado
+  _irState[prefix] = { mode, originalRate };
+
+  // Atualiza UI dos botões
+  _irUpdateBtnUI(prefix, mode, originalRate, rLiq, anos);
+
+  // Dispara recálculo
+  cfg.updateFn();
+}
+
+function irSimReset(prefix) {
+  const cfg = _IR_CALC_MAP[prefix];
+  if (!cfg) return;
+  const state = _irState[prefix];
+  if (!state || state.originalRate === null) return;
+
+  let sldRateId = cfg.sldRate;
+  let lblRateId = cfg.lblRate;
+  if (prefix === 'qp') {
+    const ids = _irGetQpRateIds();
+    if (!ids) return;
+    sldRateId = ids.sldRate;
+    lblRateId = ids.lblRate;
+  }
+
+  const sldEl = document.getElementById(sldRateId);
+  if (!sldEl) return;
+
+  sldEl.dataset.override = state.originalRate;
+  sldEl._fc = true;
+  sldEl.value = Math.min(Math.max(state.originalRate, +sldEl.min), +sldEl.max);
+  sldEl._fc = false;
+
+  const lblEl = document.getElementById(lblRateId);
+  if (lblEl && !lblEl.classList.contains('editing')) {
+    lblEl.textContent = state.originalRate.toFixed ? state.originalRate.toFixed(1).replace('.', ',') + '%' : state.originalRate + '%';
+    if (cfg.colorGreen) lblEl.style.color = 'var(--green)';
+  }
+
+  _irState[prefix] = { mode: null, originalRate: null };
+  _irUpdateBtnUI(prefix, null, null, null, null);
+  cfg.updateFn();
+}
+
+function _irUpdateBtnUI(prefix, activeMode, originalRate, rLiq, anos) {
+  const btnRV    = document.getElementById(prefix + '-btn-rv');
+  const btnCC    = document.getElementById(prefix + '-btn-cc');
+  const labelEl  = document.getElementById(prefix + '-ir-label');
+  const resetBtn = document.getElementById(prefix + '-ir-reset');
+
+  // Normaliza prefixo para IDs com hifens duplos (ex: sim-acc → sim-acc-btn-rv)
+  // Já foi feito acima com o prefixo completo
+
+  if (!btnRV || !btnCC) return;
+
+  btnRV.classList.toggle('active-rv', activeMode === 'rv');
+  btnCC.classList.toggle('active-cc', activeMode === 'cc');
+
+  if (activeMode && labelEl) {
+    const modeLabel = activeMode === 'rv' ? 'IR 15% resgate' : 'Come-Cotas TR';
+    const delta = rLiq !== null && originalRate !== null
+      ? ' (−' + (originalRate - rLiq).toFixed(2).replace('.', ',') + ' p.p.)'
+      : '';
+    labelEl.textContent = modeLabel + ': ' + (rLiq !== null ? rLiq.toFixed(2).replace('.', ',') + '%' : '—') + delta;
+    labelEl.classList.add('visible');
+    if (resetBtn) resetBtn.style.display = 'inline';
+  } else {
+    if (labelEl) labelEl.classList.remove('visible');
+    if (resetBtn) resetBtn.style.display = 'none';
+  }
+}
+
+// Quando o usuário mexe em qualquer parâmetro com IR ativo:
+// restaura a taxa original e desativa os botões.
+// skipRateRestore=true: usado quando o próprio slider de taxa foi mexido
+//   (o usuário está substituindo a taxa conscientemente — não restauramos).
+// Não dispara recálculo aqui — o listener original do slider já faz isso.
+function _irOnRateManualChange(prefix, skipRateRestore) {
+  const state = _irState[prefix];
+  if (!state || state.mode === null) return;
+
+  const cfg = _IR_CALC_MAP[prefix];
+  if (!cfg) return;
+
+  if (!skipRateRestore) {
+    let sldRateId = cfg.sldRate;
+    let lblRateId = cfg.lblRate;
+    if (prefix === 'qp') {
+      const ids = _irGetQpRateIds();
+      if (ids) { sldRateId = ids.sldRate; lblRateId = ids.lblRate; }
+    }
+
+    const sldEl = document.getElementById(sldRateId);
+    if (sldEl && state.originalRate !== null) {
+      sldEl.dataset.override = state.originalRate;
+      sldEl._fc = true;
+      sldEl.value = Math.min(Math.max(state.originalRate, +sldEl.min), +sldEl.max);
+      sldEl._fc = false;
+
+      const lblEl = document.getElementById(lblRateId);
+      if (lblEl && !lblEl.classList.contains('editing')) {
+        const fmt = Number.isInteger(state.originalRate)
+          ? state.originalRate + '%'
+          : state.originalRate.toFixed(1).replace('.', ',') + '%';
+        lblEl.textContent = fmt;
+        if (cfg.colorGreen) lblEl.style.color = 'var(--green)';
+      }
+    }
+  }
+
+  _irState[prefix] = { mode: null, originalRate: null };
+  _irUpdateBtnUI(prefix, null, null, null, null);
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 loadState();            // Restore sliders from localStorage
 // Initialize colored thumbs for prazo sliders
@@ -3080,6 +3577,49 @@ setGrowthColor('mc-sG','mc-lG',getV('mc-sG'),getV('mc-sI'));
 qpBuildControls();
 simUpdate();            // Simulador — runs immediately (first visible panel)
 // MC and QP boot lazily on first panel activation
+
+// ── IR: invalida estado se usuário mover QUALQUER slider da calculadora ───
+// Sliders de taxa: skipRateRestore=true (usuário substitui conscientemente)
+// Todos os outros: restaura taxa original antes de desativar
+// Projetar — Acumulação
+['sim-sP','sim-sM','sim-sG','sim-sY','sim-sI'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => _irOnRateManualChange('sim-acc', false));
+});
+document.getElementById('sim-sR')?.addEventListener('input', () => _irOnRateManualChange('sim-acc', true));
+
+// Projetar — Retirada
+['sim-dsS','sim-dsC','sim-dsI','sim-dsY'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => _irOnRateManualChange('sim-ret', false));
+});
+document.getElementById('sim-dsR')?.addEventListener('input', () => _irOnRateManualChange('sim-ret', true));
+
+// Estressar — Acumulação
+['mc-sP','mc-sM','mc-sG','mc-sY','mc-sI','mc-sV'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => _irOnRateManualChange('mc-acc', false));
+});
+document.getElementById('mc-sR')?.addEventListener('input', () => _irOnRateManualChange('mc-acc', true));
+
+// Estressar — Retirada
+['mc-sC','mc-sD','mc-sVR'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => _irOnRateManualChange('mc-ret', false));
+});
+document.getElementById('mc-sRR')?.addEventListener('input', () => _irOnRateManualChange('mc-ret', true));
+
+// Planejar — delegado ao container (não distingue taxa dos demais — restaura sempre)
+const _qpGrid = document.getElementById('qp-controlsGrid');
+if (_qpGrid) {
+  _qpGrid.addEventListener('input', e => {
+    if (e.target.type === 'range') _irOnRateManualChange('qp', false);
+  });
+  // Cobre edições via contenteditable (labels editáveis)
+  _qpGrid.addEventListener('focusout', e => {
+    if (e.target.isContentEditable) _irOnRateManualChange('qp', false);
+  });
+}
 </script>
 </body>
 </html>
