@@ -58,7 +58,10 @@
     color: var(--muted);
     letter-spacing: 0.06em;
     text-transform: uppercase;
+    text-decoration: none;
   }
+  .wordmark:hover { color: var(--text); }
+  .top-bar-right { display: flex; align-items: center; gap: 0.75rem; }
 
   .theme-btn {
     font-family: 'Courier New', monospace;
@@ -210,7 +213,9 @@
 
 <div class="top-bar">
   <span class="wordmark">ferramentas financeiras</span>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☽ escuro</button>
+  <div class="top-bar-right">
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">◑</button>
+  </div>
 </div>
 
 <div class="hero">
@@ -281,7 +286,7 @@
   const saved = localStorage.getItem('theme');
   if (saved === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
-    document.getElementById('themeBtn').textContent = '○ claro';
+    document.getElementById('themeBtn').textContent = '◐';
   }
 
   function toggleTheme() {
@@ -289,11 +294,11 @@
     if (isDark) {
       document.documentElement.removeAttribute('data-theme');
       localStorage.setItem('theme', 'light');
-      document.getElementById('themeBtn').textContent = '☽ escuro';
+      document.getElementById('themeBtn').textContent = '◑';
     } else {
       document.documentElement.setAttribute('data-theme', 'dark');
       localStorage.setItem('theme', 'dark');
-      document.getElementById('themeBtn').textContent = '○ claro';
+      document.getElementById('themeBtn').textContent = '◐';
     }
   }
 </script>
