@@ -30,7 +30,7 @@ FUNDS = [
     {"name": "Genoa Capital Arpa CIC Classe FIM RL",                               "cnpj": "37495383000126", "cnpjFmt": "37.495.383/0001-26", "exibicao": "Genoa Arpa", "curto": "Arpa"},
     {"name": "Itaú Artax Ultra Multimercado FIF DA CIC RL",                        "cnpj": "42698666000105", "cnpjFmt": "42.698.666/0001-05", "exibicao": "Artax Ultra", "curto": "Artax"},
     {"name": "Guepardo Long Bias RV FIM",                                          "cnpj": "24623392000103", "cnpjFmt": "24.623.392/0001-03", "exibicao": "Guepardo Long Bias", "curto": "Guepardo"},
-    {"name": "Kapitalo Tarkus FIF Cotas FIA",                                      "cnpj": "28747685000153", "cnpjFmt": "28.747.685/0001-53", "exibicao": "Kapitalo Tarkus", "curto": "Kapitalo"},
+    {"name": "Kapitalo Tarkus FIF Cotas FIA",                                      "cnpj": "28747685000153", "cnpjFmt": "28.747.685/0001-53", "exibicao": "Kapitalo Tarkus", "curto": "Tarkus"},
     {"name": "Real Investor FIC FIF Ações RL",                                     "cnpj": "10500884000105", "cnpjFmt": "10.500.884/0001-05", "exibicao": "Real Investor", "curto": "Real"},
     {"name": "Gama Schroder Gaia Contour Tech Equity L&S BRL FIF CIC Mult IE RL", "cnpj": "35744790000102", "cnpjFmt": "35.744.790/0001-02", "exibicao": "Schroder Tech L&S", "curto": "Schroder"},
     {"name": "Patria Long Biased FIF Cotas FIM",                                   "cnpj": "38954217000103", "cnpjFmt": "38.954.217/0001-03", "exibicao": "Pátria Long Biased", "curto": "Pátria"},
