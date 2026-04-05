@@ -42,28 +42,59 @@
     margin: 0 auto;
   }
 
-  /* ── Nav / tabs ─────────────────────────────────────────────────────── */
-  nav { display: flex; gap: 6px; margin-bottom: 2.5rem; flex-wrap: wrap; align-items: center; }
-  nav button {
-    font-family: 'Courier New', monospace;
-    font-size: 0.72rem;
-    padding: 5px 14px;
-    border-radius: 20px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: all 0.15s;
+  /* ── Top bar ── */
+  .top-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 2.5rem; padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
   }
-  nav button:hover { border-color: var(--text); color: var(--text); }
-  nav button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
-  nav a.back-link {
+  .wordmark {
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;
+    text-decoration: none;
+  }
+  .wordmark:hover { color: var(--text); }
+  .top-bar-right { display: flex; align-items: center; gap: 0.75rem; }
+  .theme-btn {
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); cursor: pointer;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .theme-btn:hover { border-color: var(--text); color: var(--text); }
+  .back-link {
     font-family: 'Courier New', monospace; font-size: 0.72rem;
     color: var(--muted); text-decoration: none; display: inline-flex;
     align-items: center; gap: 5px; padding: 5px 14px; border-radius: 20px;
     border: 1px solid var(--border); transition: all 0.15s; white-space: nowrap;
   }
-  nav a.back-link:hover { border-color: var(--text); color: var(--text); }
+  .back-link:hover { border-color: var(--text); color: var(--text); }
+  /* ── Module header ── */
+  .module-tag {
+    font-family: 'Courier New', monospace; font-size: 0.62rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 0.5rem;
+  }
+  .module-title {
+    font-size: 1.9rem; font-weight: normal;
+    letter-spacing: -0.025em; line-height: 1.15; margin-bottom: 0.5rem;
+  }
+  .module-meta {
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    color: var(--muted); margin-bottom: 1.75rem;
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  /* ── Panel tabs (Projetar / Planejar / Estressar) ── */
+  .panel-tabs {
+    display: flex; gap: 6px; margin-bottom: 2.5rem; flex-wrap: wrap; align-items: center;
+  }
+  .panel-tabs button {
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  .panel-tabs button:hover { border-color: var(--text); color: var(--text); }
+  .panel-tabs button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
   /* ── Section panels ─────────────────────────────────────────────────── */
   .panel { display: none; }
@@ -268,14 +299,26 @@
 <body>
 
 <!-- ── Navigation ──────────────────────────────────────────────────────── -->
-<nav>
+<div class="top-bar">
+  <a class="wordmark" href="index.html">← ferramentas financeiras</a>
+  <div class="top-bar-right">
+    <a class="back-link" href="fundos.html" title="Ir para o Ranking de Fundos">📊 Fundos</a>
+    <a class="back-link" href="breadth.html" title="Ir para o IBOV Breadth">📈 Breadth</a>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">◑</button>
+  </div>
+</div>
+
+<div class="module-tag">módulo 02</div>
+<h1 class="module-title">Simulador de Aposentadoria</h1>
+<div class="module-meta">
+  <span>projeção de patrimônio e planejamento de retirada</span>
+</div>
+
+<div class="panel-tabs">
   <button class="active" onclick="showPanel('sim', this)">Projetar</button>
   <button onclick="showPanel('qp', this)">Planejar</button>
   <button id="nav-mc-btn" onclick="showPanel('mc', this)">Estressar</button>
-  <a class="back-link" href="fundos.html" style="margin-left:auto;" title="Ir para o Ranking de Fundos">📊 Fundos</a>
-  <a class="back-link" href="index.html">← Menu</a>
-  <button id="themeBtn" onclick="toggleTheme()" title="Alternar modo escuro">◑</button>
-</nav>
+</div>
 
 <!-- ════════════════════════════════════════════════════════════════════════
      PANEL 1 — SIMULADOR
@@ -881,11 +924,9 @@ function toggleTheme() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
   document.getElementById('themeBtn').textContent = isDark ? '◑' : '◐';
-  // Re-sync prazo thumbs since their colors are theme-dependent (fix #6)
   ['sim-sY','mc-sY'].forEach(setPrazoThumbColor);
   try {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    // If toggling back to match OS preference, clear the override
     if ((isDark && !prefersDark) || (!isDark && prefersDark)) {
       localStorage.removeItem('theme');
     } else {
@@ -894,7 +935,6 @@ function toggleTheme() {
   } catch(e){}
 }
 // Restore theme preference on boot
-// Priority: 1) explicit user choice in localStorage, 2) OS preference
 (function(){
   try {
     const saved = localStorage.getItem('theme');
@@ -902,9 +942,8 @@ function toggleTheme() {
     const useDark = saved === 'dark' || (saved === null && prefersDark);
     if (useDark) {
       document.documentElement.setAttribute('data-theme','dark');
-      document.getElementById('themeBtn').textContent='◐';
+      document.getElementById('themeBtn').textContent = '◐';
     }
-    // Also respond to OS theme changes at runtime (e.g. auto-dark at sunset)
     if (window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
         if (localStorage.getItem('theme') === null) {
@@ -970,7 +1009,7 @@ function downloadCSV(type) {
 // ── Panel switching ────────────────────────────────────────────────────────
 function showPanel(id, btn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.panel-tabs button').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-'+id).classList.add('active');
   btn.classList.add('active');
   if (id === 'mc' && !MCState.rendered) { setTimeout(mcUpdate, 0); MCState.rendered = true; }
