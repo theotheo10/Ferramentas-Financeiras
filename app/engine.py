@@ -209,6 +209,77 @@ def backfill_missing_tickers(prices: pd.DataFrame) -> int:
     return n_success
 
 
+# ── Historical backfill of composition tickers missing from prices.parquet ───
+
+def historical_backfill() -> int:
+    """
+    One-shot backfill for composition tickers that are entirely absent from
+    prices.parquet (or have zero valid rows). Fetches full history from
+    2013-07-01 so MA200 warm-up is available for the earliest IBOV windows.
+
+    Called by fetch_breadth.py on every run; exits quickly when nothing is
+    missing (all-tickers check is cheap). Triggers a full breadth recompute
+    when it adds new data.
+
+    Returns the number of tickers successfully backfilled.
+    """
+    prices = load_or_fetch_prices()
+
+    all_comp_tickers = get_all_historical_tickers(IBOV_COMPOSITION_HISTORY)
+
+    # Tickers that are absent OR have zero valid rows
+    need_fetch = [
+        t for t in all_comp_tickers
+        if t not in prices.columns or prices[t].notna().sum() == 0
+    ]
+
+    if not need_fetch:
+        logger.info("Historical backfill: nada a fazer — todos os tickers presentes.")
+        return 0
+
+    logger.info(
+        f"Historical backfill: {len(need_fetch)} tickers ausentes — "
+        f"buscando histórico desde 2013-07-01..."
+    )
+    logger.info(f"  Tickers: {sorted(need_fetch)}")
+
+    start = "2013-07-01"
+    end   = datetime.today().strftime("%Y-%m-%d")
+
+    new_prices = fetch_prices(need_fetch, start=start, end=end)
+    if new_prices.empty:
+        logger.warning("Historical backfill: yfinance não retornou dados.")
+        return 0
+
+    n_success = 0
+    for col in new_prices.columns:
+        n_valid = new_prices[col].notna().sum()
+        if n_valid == 0:
+            logger.warning(f"  {col}: sem dados no Yahoo Finance — mantendo ausente.")
+            continue
+        if col in prices.columns:
+            prices[col] = new_prices[col].combine_first(prices[col])
+        else:
+            prices[col] = new_prices[col]
+        n_success += 1
+        logger.info(f"  {col}: {n_valid} linhas adicionadas.")
+
+    if n_success > 0:
+        full_index = prices.index.union(new_prices.index)
+        prices = prices.reindex(full_index).sort_index()
+        prices = prices.asfreq("B").ffill(limit=5)
+        prices.to_parquet(PRICES_PATH)
+        logger.info(
+            f"Historical backfill: {n_success}/{len(need_fetch)} tickers adicionados. "
+            f"Recomputando breadth completo..."
+        )
+        breadth = compute_breadth(prices)
+        breadth.to_parquet(BREADTH_PATH)
+        logger.info(f"Breadth recomputado: {breadth.shape}")
+
+    return n_success
+
+
 # ── MA computation ───────────────────────────────────────────────────────────
 
 def compute_moving_averages(prices: pd.DataFrame) -> dict[int, pd.DataFrame]:
