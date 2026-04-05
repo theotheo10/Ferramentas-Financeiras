@@ -74,6 +74,7 @@ from app.engine import (
     load_or_compute_breadth,
     incremental_update,
     backfill_missing_tickers,
+    historical_backfill,
     classify_regime,
     BREADTH_PATH as ENGINE_BREADTH_PATH,
     PRICES_PATH  as ENGINE_PRICES_PATH,
@@ -227,6 +228,13 @@ def main():
         logger.info(f"✓ Backfill: {n_backfilled} tickers com histórico retroativo adicionado")
         breadth = load_or_compute_breadth(force_refresh=True)
         logger.info(f"✓ Breadth recomputado após backfill: {breadth.shape}")
+
+    # ── PASSO 3.5: backfill histórico (tickers ausentes do parquet inteiro) ──
+    logger.info("═══ BACKFILL HISTÓRICO ═══")
+    n_hist = historical_backfill()
+    if n_hist > 0:
+        logger.info(f"✓ Backfill histórico: {n_hist} tickers adicionados, breadth recomputado.")
+        breadth = load_or_compute_breadth()
 
     # ── PASSO 4: manutenção ──────────────────────────────────────────────────
     logger.info("═══ MANUTENÇÃO AUTOMÁTICA ═══")
