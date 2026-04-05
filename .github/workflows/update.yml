@@ -7,10 +7,10 @@ on:
     # ── Fundos (CVM) — duas vezes por dia ────────────────────────────────────
     - cron: "0 15 * * 1-5"   # 12:00 BRT
     - cron: "0 21 * * 1-5"   # 18:00 BRT
-    # ── Breadth (Yahoo Finance) — a cada 15 min durante o pregão ─────────────
+    # ── Breadth (Yahoo Finance) — de hora em hora durante o pregão ──────────
     # Pregão B3: 10:00–18:55 BRT = 13:00–21:55 UTC
-    - cron: "0,15,30,45 13-21 * * 1-5"
-    - cron: "0 22 * * 1-5"
+    - cron: "30 13-21 * * 1-5"
+    - cron: "30 22 * * 1-5"
   workflow_dispatch:
 
 permissions:
