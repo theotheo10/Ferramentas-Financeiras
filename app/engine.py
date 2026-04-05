@@ -145,13 +145,12 @@ def load_or_fetch_prices(force_refresh: bool = False) -> pd.DataFrame:
 
 def backfill_missing_tickers(prices: pd.DataFrame) -> int:
     """
-    After a rebalance, new tickers may be in the composition but absent from
-    prices.parquet (or present with insufficient history for MA200).
+    After a rebalance, new tickers may be entirely absent from prices.parquet.
+    This function fetches their full history from 2013-07-01 and merges it in.
 
-    For tickers that are entirely absent or have zero rows: fetches full history
-    since 2013-07-01, so breadth is correct for all historical windows.
-    For tickers that exist but have fewer than MA200_WARMUP_DAYS rows: also
-    fetches from 2013-07-01, since a short window fetch would miss early history.
+    Only targets tickers that are completely absent from prices.parquet columns.
+    Tickers already present (even with sparse data) are handled by
+    historical_backfill(), which runs on every execution and is idempotent.
 
     Returns the number of tickers successfully backfilled.
     """
@@ -159,39 +158,26 @@ def backfill_missing_tickers(prices: pd.DataFrame) -> int:
     if not current_tickers:
         return 0
 
-    full_start  = "2013-07-01"
-    end_date    = datetime.today().strftime("%Y-%m-%d")
-
-    # Find tickers that are missing entirely or have insufficient history
-    missing = []
-    for t in current_tickers:
-        if t not in prices.columns:
-            missing.append(t)
-            continue
-        n_valid = prices[t].notna().sum()
-        if n_valid < MA200_WARMUP_DAYS:
-            missing.append(t)
+    # Only fetch tickers that don't exist in prices at all
+    missing = [t for t in current_tickers if t not in prices.columns]
 
     if not missing:
-        logger.info("Backfill: todos os tickers da composição atual têm histórico suficiente.")
+        logger.info("Backfill: todos os tickers da composição atual já estão no parquet.")
         return 0
 
-    logger.info(f"Backfill necessário para {len(missing)} tickers: {missing}")
+    logger.info(f"Backfill: {len(missing)} tickers novos ausentes do parquet: {missing}")
+
+    full_start = "2013-07-01"
+    end_date   = datetime.today().strftime("%Y-%m-%d")
 
     new_prices = fetch_prices(missing, start=full_start, end=end_date)
     if new_prices.empty:
         logger.warning("Backfill: nenhum dado retornado pelo Yahoo Finance.")
         return 0
 
-    # Merge into existing prices
     for col in new_prices.columns:
-        if col in prices.columns:
-            # New fetch covers full history — prefer it, fill gaps with existing
-            prices[col] = new_prices[col].combine_first(prices[col])
-        else:
-            prices[col] = new_prices[col]
+        prices[col] = new_prices[col]
 
-    # Reindex to cover the full date range
     full_index = prices.index.union(new_prices.index)
     prices = prices.reindex(full_index).sort_index()
     prices = prices.asfreq("B").ffill(limit=5)
@@ -205,7 +191,7 @@ def backfill_missing_tickers(prices: pd.DataFrame) -> int:
     )
     if n_success < len(missing):
         failed = [t for t in missing if t not in new_prices.columns or new_prices[t].notna().sum() == 0]
-        logger.warning(f"Backfill falhou para {len(failed)} tickers (não disponíveis no Yahoo): {failed}")
+        logger.warning(f"Backfill falhou para {len(failed)} tickers: {failed}")
 
     return n_success
 
