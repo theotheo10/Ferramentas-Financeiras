@@ -5341,20 +5341,34 @@ function simularFundo(aporte, retornoAnual, trib, anosResgate) {
   //
   // No resgate (entre dois come-cotas):
   //   rendimento_trecho = patrimonioReal_final - base_apos_ultimo_cc
-  //   aliq_trecho = trAliquota(dias_desde_ultimo_CC_ou_aporte)
-  //     — para prazo > 720d: sempre 15%
-  //     — para prazo ≤ 720d: usar o prazo do trecho, não o prazo total,
-  //       pois a alíquota regressiva incide sobre cada trecho individualmente.
-  //   ir_resgate = rendimento_trecho * aliq_trecho
+  //   aliq_total = trAliquota(dias_desde_o_APORTE_original)
+  //     — prazo total desde o aporte determina a alíquota final (Lei 11.033/2004)
+  //   aliq_complemento = max(0, aliq_total - 0.15)
+  //     — o come-cotas já antecipou 15% sobre cada período; no resgate
+  //       paga-se apenas o diferencial sobre o trecho ainda em aberto
+  //   ir_resgate = rendimento_trecho * aliq_complemento
   //   valorLiquido = patrimonioReal_final - ir_resgate
 
   const hoje = new Date();
+
+  // Retorna o último dia útil (seg–sex) do mês dado.
+  // Feriados nacionais variáveis não são considerados — apenas fins de semana,
+  // que são a causa dominante de deslocamento da data de come-cotas.
+  function ultimoDiaUtil(ano, mes) {
+    // mes: 0-indexed (4 = maio, 10 = novembro)
+    const d = new Date(ano, mes + 1, 0); // último dia do mês
+    const dow = d.getDay(); // 0 = dom, 6 = sáb
+    if (dow === 6) d.setDate(d.getDate() - 1); // sáb → sex
+    if (dow === 0) d.setDate(d.getDate() - 2); // dom → sex
+    return d;
+  }
+
   function proximosComeCotas(anosTotal) {
     const datas = [];
     const fimMs = hoje.getTime() + anosTotal * 365.25 * 86400000;
     const ano0  = hoje.getFullYear();
     for (let a = ano0; a <= ano0 + anosTotal + 1; a++) {
-      [new Date(a, 4, 31), new Date(a, 10, 30)].forEach(d => {
+      [ultimoDiaUtil(a, 4), ultimoDiaUtil(a, 10)].forEach(d => {
         if (d > hoje && d.getTime() < fimMs) datas.push(d);
       });
     }
@@ -5373,8 +5387,8 @@ function simularFundo(aporte, retornoAnual, trib, anosResgate) {
     return valorInicial * Math.pow(1 + r, dias / 365.25);
   }
 
-  let dataAtual        = new Date(hoje);
-  let dataUltimoEvento = new Date(hoje);  // data do último CC ou do aporte
+  let dataAtual     = new Date(hoje);
+  let dataUltCC     = new Date(hoje); // data do último CC (ou do aporte se nenhum ocorreu)
 
   for (const dataCC of ccDatas) {
     const dias = (dataCC - dataAtual) / 86400000;
@@ -5392,9 +5406,9 @@ function simularFundo(aporte, retornoAnual, trib, anosResgate) {
         aliq: 15,
       });
     }
-    base             = patrimonioReal;
-    dataAtual        = new Date(dataCC);
-    dataUltimoEvento = new Date(dataCC);  // sempre atualiza, mesmo sem rendimento positivo
+    base      = patrimonioReal;
+    dataAtual = new Date(dataCC);
+    dataUltCC = new Date(dataCC); // sempre atualiza, mesmo sem rendimento positivo
   }
 
   // Crescimento do último trecho (do último CC até o resgate)
@@ -5402,12 +5416,19 @@ function simularFundo(aporte, retornoAnual, trib, anosResgate) {
   patrimonioReal = crescer(patrimonioReal, diasUltimoTrecho);
   const rendTrecho = patrimonioReal - base;
 
-  // Alíquota do trecho final: prazo desde o último come-cotas (ou desde o
-  // aporte, se não houve nenhum come-cotas no período). Correto para prazos
-  // ≤ 720d; para > 720d a alíquota é 15% de qualquer forma.
-  const diasTrecho  = (dataResgate - dataUltimoEvento) / 86400000;
-  const aliqTrecho  = trAliquota(diasTrecho);
-  const irResgate   = Math.max(0, rendTrecho * aliqTrecho);
+  // Alíquota do resgate: determinada pelo prazo TOTAL desde o aporte original
+  // (não pelo prazo do trecho desde o último CC). Fonte: Lei 11.033/2004 e
+  // regulamentação da Receita Federal — o come-cotas é antecipação da menor
+  // alíquota; no resgate cobra-se o complemento com base no prazo total.
+  // Para prazo > 720d → alíquota = 15% = mesma do come-cotas → complemento = 0.
+  // Para prazo ≤ 720d → alíquota > 15% → complemento = (alíqTotal - 15%) sobre rendTrecho.
+  const diasTotalAporte = (dataResgate - hoje) / 86400000;
+  const aliqTotal   = trAliquota(diasTotalAporte);
+  // O come-cotas já antecipou 15% sobre os rendimentos de cada período anterior.
+  // No resgate, incide a alíquota complementar (alíqTotal - 15%) sobre o rendimento
+  // do trecho aberto (desde o último CC). Se alíqTotal = 15%, complemento = 0.
+  const aliqComplemento = Math.max(0, aliqTotal - 0.15);
+  const irResgate   = Math.max(0, rendTrecho * aliqComplemento);
 
   if (rendTrecho > 0) {
     detalhes.push({
@@ -5415,7 +5436,7 @@ function simularFundo(aporte, retornoAnual, trib, anosResgate) {
       data: dataResgate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }),
       rendimento: rendTrecho,
       ir: irResgate,
-      aliq: aliqTrecho * 100,
+      aliq: aliqComplemento * 100,
     });
   }
 
@@ -5862,8 +5883,8 @@ A alíquota é sempre 15% — mas o capital pago deixa de crescer.
 <strong>IR no resgate (último trecho)</strong>
 ${row.irResgate > 0 ? fmtBRL(row.irResgate) : 'zero — trecho final coincidiu com come-cotas'}
 Sobre o rendimento entre o último come-cotas e o resgate.
-Alíquota calculada sobre o prazo deste trecho (não do aporte total):
-≤ 180d → 22,5% · ≤ 360d → 20% · ≤ 720d → 17,5% · &gt; 720d → 15%.</div>
+Alíquota complementar = alíquota total (pelo prazo desde o aporte) − 15% já antecipado:
+≤ 180d → 7,5% compl. · ≤ 360d → 5% compl. · ≤ 720d → 2,5% compl. · &gt; 720d → 0% (já quitado).</div>
              </div>`
           : `<span>${fmtBRL(row.irTotal)}</span>`
         }
