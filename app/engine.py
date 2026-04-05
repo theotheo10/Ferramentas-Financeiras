@@ -147,8 +147,11 @@ def backfill_missing_tickers(prices: pd.DataFrame) -> int:
     """
     After a rebalance, new tickers may be in the composition but absent from
     prices.parquet (or present with insufficient history for MA200).
-    This function fetches 250 days of history for each such ticker and merges
-    them into prices.parquet.
+
+    For tickers that are entirely absent or have zero rows: fetches full history
+    since 2013-07-01, so breadth is correct for all historical windows.
+    For tickers that exist but have fewer than MA200_WARMUP_DAYS rows: also
+    fetches from 2013-07-01, since a short window fetch would miss early history.
 
     Returns the number of tickers successfully backfilled.
     """
@@ -156,11 +159,10 @@ def backfill_missing_tickers(prices: pd.DataFrame) -> int:
     if not current_tickers:
         return 0
 
-    today      = datetime.today()
-    start_date = (today - timedelta(days=MA200_WARMUP_DAYS + 30)).strftime("%Y-%m-%d")
-    end_date   = today.strftime("%Y-%m-%d")
+    full_start  = "2013-07-01"
+    end_date    = datetime.today().strftime("%Y-%m-%d")
 
-    # Find tickers that are missing entirely or have <200 days of data
+    # Find tickers that are missing entirely or have insufficient history
     missing = []
     for t in current_tickers:
         if t not in prices.columns:
@@ -176,16 +178,15 @@ def backfill_missing_tickers(prices: pd.DataFrame) -> int:
 
     logger.info(f"Backfill necessário para {len(missing)} tickers: {missing}")
 
-    new_prices = fetch_prices(missing, start=start_date, end=end_date)
+    new_prices = fetch_prices(missing, start=full_start, end=end_date)
     if new_prices.empty:
         logger.warning("Backfill: nenhum dado retornado pelo Yahoo Finance.")
         return 0
 
     # Merge into existing prices
-    # For tickers already present (but with insufficient data), update/extend
     for col in new_prices.columns:
         if col in prices.columns:
-            # Prefer new data; keep old data where new is NaN
+            # New fetch covers full history — prefer it, fill gaps with existing
             prices[col] = new_prices[col].combine_first(prices[col])
         else:
             prices[col] = new_prices[col]
@@ -397,7 +398,7 @@ def incremental_update() -> pd.DataFrame:
             if col not in prices.columns:
                 prices[col] = new_px[col]
             else:
-                prices[col].update(new_px[col])
+                prices.update({col: new_px[col]})
 
         # Append rows that don't exist yet
         new_rows = new_px[~new_px.index.isin(prices.index)]
