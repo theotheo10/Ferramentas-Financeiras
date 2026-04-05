@@ -3,73 +3,79 @@ Ticker normalization for Brazilian equities.
 Handles: renames, class conversions, mergers, corporate actions.
 All tickers in Yahoo Finance .SA format.
 
-Last updated: 2026-03 — covers all B3 changes through early 2026.
+Last updated: 2026-04 — covers all B3 changes through early 2026.
+
+Rules:
+  "OLD.SA": "NEW.SA"  — yfinance serves full history under NEW
+  "OLD.SA": None      — delisted with no B3 successor (excluded from breadth)
+
+Tickers not in this map are returned unchanged by normalize_ticker().
 """
 
 # Map old/dead tickers → current valid ticker
-# Format: "OLD.SA": "NEW.SA"  or  "OLD.SA": None (delisted, no successor)
 TICKER_MAP = {
-    # ── Historical renames (pre-2024) ────────────────────────────────────────
+    # ── Historical renames — yfinance serves retroactively under new name ─────
 
-    # B3 itself (BVMF3 merged into B3SA3 in 2017)
+    # B3 (BVMF3 merged into B3SA3 in 2017)
     "BVMF3.SA": "B3SA3.SA",
 
-    # Suzano merged Fibria (FIBR3) → SUZB3 in 2019
+    # Cetip merged into B3 in 2017
+    "CTIP3.SA": "B3SA3.SA",
+
+    # Suzano absorbed Fibria (FIBR3) in 2019; preferred (SUZB5) converted to ON
     "FIBR3.SA": "SUZB3.SA",
     "SUZB5.SA": "SUZB3.SA",
 
-    # Vale (preferred shares discontinued)
+    # Vale preferred shares discontinued
     "VALE5.SA": "VALE3.SA",
 
-    # TIM (ticker change)
+    # TIM Participações renamed to TIM S.A.
     "TIMP3.SA": "TIMS3.SA",
 
-    # Telefonica/Vivo
+    # Telefônica/Vivo share class consolidation
     "VIVT4.SA": "VIVT3.SA",
     "TLPP4.SA": "VIVT3.SA",
 
-    # Klabim (PN → units)
+    # Klabin PN → units
     "KLBN4.SA": "KLBN11.SA",
-
-    # Lojas Americanas / LAME → AMER3 → collapsed 2023
-    "LAME4.SA": None,
-    "BTOW3.SA": None,
-    "AMER3.SA": None,
 
     # Cogna (ex-Kroton)
     "KROT3.SA": "COGN3.SA",
 
-    # Via Varejo → Grupo Casas Bahia → BHIA3
-    "VVAR3.SA": "BHIA3.SA",
+    # Via Varejo → Casas Bahia → BHIA3
+    "VVAR3.SA":  "BHIA3.SA",
+    "VVAR11.SA": "BHIA3.SA",
+    "VIIA3.SA":  "BHIA3.SA",
 
-    # HGTX → CTC (CTCA3)
+    # Hering renamed to CTC
     "HGTX3.SA": "CTCA3.SA",
 
     # Estácio → Yduqs
     "ESTC3.SA": "YDUQ3.SA",
 
-    # ELPL4 → ENBR3 (EDP Energias do Brasil)
+    # Iguatemi → IGTI11
+    "IGTA3.SA": "IGTI11.SA",
+
+    # Duratex renamed to Dexco
+    "DTEX3.SA": "DXCO3.SA",
+
+    # GNDI merged into Hapvida
+    "GNDI3.SA": "HAPV3.SA",
+
+    # EDP Energias do Brasil (old ticker ELPL4)
     "ELPL4.SA": "ENBR3.SA",
 
     # Pão de Açúcar PN → ON
     "PCAR4.SA": "PCAR3.SA",
 
-    # ── Delistings (no successor) ─────────────────────────────────────────────
+    # LC AM absorbed by Localiza (RENT3)
+    "LCAM3.SA": "RENT3.SA",
 
-    "OIBR3.SA":  None,   # Oi — delisted/restructuring
-    "OIBR4.SA":  None,
-    "OGXP3.SA":  None,   # OGX
-    "PDGR3.SA":  None,   # PDG Realty
-    "BISA3.SA":  None,   # Brookfield Incorporações
-    "RSID3.SA":  None,   # Rossi
-    "CZRS4.SA":  None,   # Cyrela/Helbor
-    "DTEX3.SA":  None,   # Duratex (saiu do IBOV, cancelado)
-    "GFSA3.SA":  None,   # Gafisa (saiu do IBOV)
-    "PORT3.SA":  None,   # Porto Seguro ON (saiu do IBOV)
-    "PMAM3.SA":  None,   # Paranapanema
-    "LLXL3.SA":  None,   # LLX Logística
-    "SMLE3.SA":  None,   # Smiles (incorporada pela Gol)
-    "BRPR3.SA":  None,   # BR Properties
+    # Eneva (old ticker ENAT3)
+    "ENAT3.SA": "ENEV3.SA",
+
+    # Copel PNB converted to ON in 2023
+    "CPLE6.SA": "CPLE3.SA",
 
     # ── 2024 renames ─────────────────────────────────────────────────────────
 
@@ -84,60 +90,91 @@ TICKER_MAP = {
     # ── 2025 renames ─────────────────────────────────────────────────────────
 
     # Eletrobras → Axia Energia (nov/2025)
-    # NOTA: Yahoo Finance serve AXIA3/6 apenas desde ~2025-11.
+    # Yahoo Finance serve AXIA3/6 apenas desde ~2025-11 (rename date).
     # MA200 ficará NaN até ~2026-08.
     "ELET3.SA": "AXIA3.SA",
     "ELET5.SA": "AXIA5.SA",
     "ELET6.SA": "AXIA6.SA",
 
     # Embraer (nov/2025): EMBR3 → EMBJ3
-    # NOTA: Yahoo Finance serve EMBJ3 apenas desde ~2025-10-27.
-    # MA200 ficará NaN até ~2026-06 (200 pregões após o rename).
+    # Yahoo Finance serve EMBJ3 apenas desde ~2025-10-27.
+    # MA200 ficará NaN até ~2026-06.
     "EMBR3.SA": "EMBJ3.SA",
 
-    # CCR → Motiva (mai/2025): CCRO3 → MOTV3
-    # NOTA: Yahoo Finance serve MOTV3 apenas desde ~2025-04-23 (245 dias hoje).
-    # MA200 deve fechar ~2025-12 / início de 2026.
+    # CCR → Motiva (abr/2025): CCRO3 → MOTV3
+    # Yahoo Finance serve MOTV3 apenas desde ~2025-04-23.
     "CCRO3.SA": "MOTV3.SA",
 
     # Natura (jul/2025): NTCO3 → NATU3 (voltou ao ticker original)
-    # NOTA: Yahoo Finance serve NATU3 apenas desde ~2025-07.
-    # MA200 deve fechar ~2026-04.
     "NTCO3.SA": "NATU3.SA",
-
-    # JBS (2025): JBSS3 extinto → BDR JBSS32
-    # Yahoo Finance não serve JBSS32 de forma confiável; tratamos como None
-    "JBSS3.SA": None,
 
     # BRF + Marfrig → MBRF3 (set/2025)
     "BRFS3.SA": "MBRF3.SA",
     "MRFG3.SA": "MBRF3.SA",
 
-    # Gol recuperação judicial (jun/2025): GOLL4 → GOLL54 (lote de 1000)
-    # Ação vale frações de centavo; excluímos do cálculo de breadth
+    # ── Delistings — sem sucessor na B3 ──────────────────────────────────────
+
+    # Lojas Americanas: LAME→AMER3 (2022 reestruturação) → colapso 2023
+    "LAME3.SA": None,
+    "LAME4.SA": None,
+    "BTOW3.SA": None,
+    "AMER3.SA": None,
+
+    # JBS (2025): JBSS3 migrou para NYSE via BDR JBSS32 — não serve no yfinance .SA
+    "JBSS3.SA": None,
+
+    # Gol: recuperação judicial (jun/2025), ação vale frações de centavo
     "GOLL4.SA": None,
 
-    # Azul recuperação judicial (dez/2025): AZUL4 → AZUL54
+    # Azul: recuperação judicial (dez/2025)
     "AZUL4.SA": None,
 
-    # Cielo (saída do IBOV e fechamento de capital em andamento)
-    "CIEL3.SA": "CIEL3.SA",   # ainda ativa, mantém ticker
+    # Smiles: incorporada pela Gol (ela mesma em recuperação judicial)
+    "SMLE3.SA": None,
 
-    # ── Tickers sem mudança confirmada (mantidos por clareza) ─────────────────
-    "CESP6.SA":  "CESP6.SA",
-    "CPLE6.SA":  "CPLE6.SA",
-    "ECOR3.SA":  "ECOR3.SA",
-    "QUAL3.SA":  "QUAL3.SA",
-    "CSAN3.SA":  "CSAN3.SA",
-    "SMFT3.SA":  "SMFT3.SA",
-    "MULT3.SA":  "MULT3.SA",
-    "MRVE3.SA":  "MRVE3.SA",
-    "SANB11.SA": "SANB11.SA",
-    "HAPV3.SA":  "HAPV3.SA",
-    "SEER3.SA":  "SEER3.SA",
-    "EVEN3.SA":  "EVEN3.SA",
-    "GOAU4.SA":  "GOAU4.SA",
-    "DASA3.SA":  "DASA3.SA",
+    # Oi: em recuperação judicial, delisted
+    "OIBR3.SA": None,
+    "OIBR4.SA": None,
+
+    # OGX: falência
+    "OGXP3.SA": None,
+
+    # PDG Realty: falência
+    "PDGR3.SA": None,
+
+    # Brookfield Incorporações
+    "BISA3.SA": None,
+
+    # Rossi Residencial: falência
+    "RSID3.SA": None,
+
+    # LLX Logística: falência
+    "LLXL3.SA": None,
+
+    # Souza Cruz: acquired by BAT, delisted 2016
+    "CRUZ3.SA": None,
+
+    # Cyrela/Helbor spin-off vehicle
+    "CZRS4.SA": None,
+
+    # Paranapanema: delisted
+    "PMAM3.SA": None,
+
+    # CESP: acquired by Equatorial, delisted 2021
+    "CESP6.SA": None,
+
+    # Getnet: acquired by Santander, moved to NYSE, delisted B3 2022
+    "GETT11.SA": None,
+
+    # Carrefour Brasil: parent buyout, delisted 2024
+    "CRFB3.SA": None,
+
+    # SulAmérica: acquired by Rede D'Or (RDOR3), delisted 2022
+    "SULA11.SA": None,
+
+    # Banco Inter ON/PN: converted to NYSE BDR (INTR34), delisted B3 2022
+    "BIDI3.SA": None,
+    "BIDI4.SA": None,
 }
 
 
