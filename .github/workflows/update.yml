@@ -13,6 +13,13 @@ on:
     - cron: "30 22 * * 1-5"
   workflow_dispatch:
 
+# Garante que apenas um workflow roda por vez no branch main.
+# Se um segundo disparo chegar enquanto o anterior ainda está rodando,
+# o anterior é cancelado e o novo assume — sem conflitos de push.
+concurrency:
+  group: main-deploy
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pages: write
@@ -58,10 +65,16 @@ jobs:
 
   # ════════════════════════════════════════════════════════════════════════════
   # JOB 2 — Breadth IBOV (roda em schedule e dispatch, não em push)
+  # Aguarda update-fundos quando ambos estão no mesmo run (evita conflito de git)
   # ════════════════════════════════════════════════════════════════════════════
   update-breadth:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [update-fundos]
+    if: |
+      always() &&
+      (needs.update-fundos.result == 'success' ||
+       needs.update-fundos.result == 'skipped') &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
 
     steps:
       - name: Checkout
