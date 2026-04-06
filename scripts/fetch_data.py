@@ -2275,6 +2275,9 @@ def compute_metrics_history(
                 "ntnbLong":     round(ntnb_long, 2),
                 "maxDD":        round(max_dd * 100, 2),
                 "worstStress":  worst_stress,
+                "cagr12":       round(c12, 4) if c12 is not None else None,
+                "cagr36":       round(c36, 4) if c36 is not None else None,
+                "cagr60":       round(c60, 4) if c60 is not None else None,
             }
             new_entries[cnpj][ref_iso] = entry
             total_computed += 1
@@ -2716,7 +2719,7 @@ def main() -> None:
             ntnb_hist      = ntnb_hist,
             anchor         = anchor,
             betas_data     = fund_betas,
-            backfill_months = 12,
+            backfill_months = 60,
         )
     except Exception as _mh:
         import traceback
