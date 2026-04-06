@@ -1231,8 +1231,8 @@
     /* prevent whitespace below chart */
     #tab-graficos { overflow: hidden; }
     /* ── Rank Evolution + Consistency Table ── */
-    #tab-graficos { overflow: visible; }
     #rankEvolutionSection { overflow: visible; }
+    #rankEvolutionCanvasWrap { position: relative; height: 340px; width: 100%; overflow: visible; }
     #consistencyTable thead th {
       font-family: 'Courier New', monospace; font-size: 0.58rem;
       color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
@@ -3256,7 +3256,7 @@
       </div>
     </div>
 
-    <div style="position:relative;height:340px;width:100%"><canvas id="rankEvolutionCanvas"></canvas></div>
+    <div id="rankEvolutionCanvasWrap"><canvas id="rankEvolutionCanvas"></canvas></div>
     <div id="rankEvolutionLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:0.6rem"></div>
 
     <!-- ── Tabela de Consistência ──────────────────────────────────── -->
@@ -8321,7 +8321,7 @@ function fundCagrAt(cnpj, refIso, monthsBack) {
   const quotas = fd.quotas;
   if (!dates?.length) return null;
 
-  // Binary-search style: find last index ≤ refIso
+  // Find last index ≤ refIso
   let hi = dates.length - 1;
   while (hi >= 0 && dates[hi] > refIso) hi--;
   if (hi < 0) return null;
@@ -8340,7 +8340,9 @@ function fundCagrAt(cnpj, refIso, monthsBack) {
   if (!q0 || !q1 || q0 <= 0) return null;
 
   const yrs = (new Date(dates[hi]) - new Date(dates[lo])) / (365.25 * 86400e3);
-  if (yrs < monthsBack / 12 * 0.7) return null;  // need ≥70% of requested window
+  // For short windows (≤12M) accept 50% coverage; for long windows require 80%
+  const minFraction = monthsBack <= 12 ? 0.5 : 0.8;
+  if (yrs < monthsBack / 12 * minFraction) return null;
   return (Math.pow(q1 / q0, 1 / yrs) - 1) * 100;
 }
 
@@ -8365,36 +8367,65 @@ function setRankFilter(key, val, btn) {
   renderConsistencyTable();
 }
 
-// Build percentile time-series for one fund against its universe.
-// Samples every `stride` trading days for performance.
-// Returns [{x: Date, y: 0–100}]  (100 = best in universe)
-function buildPercentileSeries(cnpj, universe, monthsBack, stride) {
-  const fd = historyData?.funds[cnpj];
-  if (!fd?.dates?.length) return [];
-
-  // Pre-compute all peers' quotas references once (avoid repeated property lookup)
-  const peers = universe.filter(c => c !== cnpj);
-  const result = [];
-
-  for (let i = 0; i < fd.dates.length; i += stride) {
-    const refIso = fd.dates[i];
-    const myVal  = fundCagrAt(cnpj, refIso, monthsBack);
-    if (myVal === null) continue;
-
-    let below = 0, valid = 0;
-    for (const p of peers) {
-      const v = fundCagrAt(p, refIso, monthsBack);
-      if (v === null) continue;
-      valid++;
-      if (v < myVal) below++;
+function getRankUniverse() {
+  return Object.keys(FUND_META).filter(cnpj => {
+    if (!historyData || !historyData.funds[cnpj]) return false;
+    if (rankFilters.tipo) {
+      const tipo = (FUND_META[cnpj]?.tipo || '').toLowerCase();
+      if (!tipo.includes(rankFilters.tipo.toLowerCase())) return false;
     }
-    if (valid < 2) continue;   // need at least 2 other peers
+    return true;
+  });
+}
 
-    // percentile in [0, 100]: 100 = best
-    const pct = valid === 0 ? 50 : (below / valid) * 100;
-    result.push({ x: new Date(refIso), y: Math.round(pct * 10) / 10 });
+// Build percentile series for ALL funds over shared date labels (no time adapter needed).
+// Returns { labels: [display_str,...], series: { cnpj: [pct|null,...] } }
+function buildAllPercentileSeries(universe, monthsBack) {
+  if (!historyData) return { labels: [], series: {} };
+
+  const allDates = historyData.commonDates || [];
+  const stride   = 5;
+  const labels   = [];
+  const series   = {};
+  universe.forEach(c => { series[c] = []; });
+
+  const fmtLabel = iso => {
+    const d  = new Date(iso + 'T12:00:00');
+    const mo = d.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
+    return mo + ' ' + String(d.getFullYear()).slice(2);
+  };
+
+  for (let i = 0; i < allDates.length; i += stride) {
+    const refIso = allDates[i];
+    labels.push(fmtLabel(refIso));
+
+    // Compute CAGR for every fund at this date
+    const cagrMap = {};
+    universe.forEach(cnpj => { cagrMap[cnpj] = fundCagrAt(cnpj, refIso, monthsBack); });
+
+    const valid = universe.filter(c => cagrMap[c] !== null);
+    if (valid.length < 3) {
+      universe.forEach(c => series[c].push(null));
+      continue;
+    }
+
+    // Sort descending by CAGR to get rank
+    const sorted = [...valid].sort((a, b) => cagrMap[b] - cagrMap[a]);
+    const n = sorted.length;
+    const rankOf = {};
+    sorted.forEach((c, idx) => { rankOf[c] = idx; });
+
+    universe.forEach(cnpj => {
+      if (cagrMap[cnpj] === null) {
+        series[cnpj].push(null);
+      } else {
+        const pct = n === 1 ? 50 : ((n - 1 - rankOf[cnpj]) / (n - 1)) * 100;
+        series[cnpj].push(Math.round(pct * 10) / 10);
+      }
+    });
   }
-  return result;
+
+  return { labels, series };
 }
 
 function renderRankEvolutionChart() {
@@ -8410,56 +8441,52 @@ function renderRankEvolutionChart() {
 
   const months  = parseInt(rankWindow, 10);
   const palette = rankPaletteFor(universe);
-  // Sample every 5 trading days — ~250 points/year, smooth enough
-  const stride  = 5;
+  const { labels, series } = buildAllPercentileSeries(universe, months);
+
+  if (!labels.length) {
+    if (rankEvoChart) { rankEvoChart.destroy(); rankEvoChart = null; }
+    return;
+  }
 
   const datasets = universe.map(cnpj => ({
-    label:           (FUND_META[cnpj]?.short || FUND_META[cnpj]?.nome || cnpj),
+    label:            FUND_META[cnpj]?.short || FUND_META[cnpj]?.nome || cnpj,
     cnpj,
-    data:            buildPercentileSeries(cnpj, universe, months, stride),
-    borderColor:     palette[cnpj],
-    backgroundColor: palette[cnpj],
-    borderWidth:     1.8,
-    pointRadius:     0,
+    data:             series[cnpj] || [],
+    borderColor:      palette[cnpj],
+    backgroundColor:  palette[cnpj],
+    borderWidth:      1.8,
+    pointRadius:      0,
     pointHoverRadius: 4,
-    tension:         0.25,
-    hidden:          rankHiddenSet.has(cnpj),
-  })).filter(d => d.data.length > 1);
+    tension:          0.25,
+    spanGaps:         false,
+    hidden:           rankHiddenSet.has(cnpj),
+  }));
 
   if (rankEvoChart) { rankEvoChart.destroy(); rankEvoChart = null; }
-  if (!datasets.length) return;
 
-  // Q-band plugin: shades Q1/Q2/Q3/Q4 regions
   const qBandPlugin = {
     id: 'qBands',
     beforeDraw(chart) {
       const { ctx: c, chartArea: a, scales: { y } } = chart;
       if (!a) return;
-      const bands = [
-        { from: 75, to: 100, color: 'rgba(26,122,82,0.04)' },
-        { from: 50, to: 75,  color: 'rgba(26,122,82,0.02)' },
-        { from: 25, to: 50,  color: 'rgba(184,50,50,0.02)' },
-        { from: 0,  to: 25,  color: 'rgba(184,50,50,0.04)' },
-      ];
-      bands.forEach(({ from, to, color }) => {
+      [
+        { from: 75, to: 100, color: 'rgba(26,122,82,0.05)'  },
+        { from: 50, to: 75,  color: 'rgba(26,122,82,0.025)' },
+        { from: 25, to: 50,  color: 'rgba(184,50,50,0.025)' },
+        { from: 0,  to: 25,  color: 'rgba(184,50,50,0.05)'  },
+      ].forEach(({ from, to, color }) => {
         c.save();
         c.fillStyle = color;
-        const yTop = y.getPixelForValue(to);
-        const yBot = y.getPixelForValue(from);
-        c.fillRect(a.left, yTop, a.width, yBot - yTop);
+        c.fillRect(a.left, y.getPixelForValue(to), a.width, y.getPixelForValue(from) - y.getPixelForValue(to));
         c.restore();
       });
-      // Draw Q-label lines
       [25, 50, 75].forEach(v => {
         const yv = y.getPixelForValue(v);
         c.save();
         c.strokeStyle = 'rgba(128,128,128,0.18)';
         c.setLineDash([4, 4]);
         c.lineWidth = 1;
-        c.beginPath();
-        c.moveTo(a.left, yv);
-        c.lineTo(a.right, yv);
-        c.stroke();
+        c.beginPath(); c.moveTo(a.left, yv); c.lineTo(a.right, yv); c.stroke();
         c.restore();
       });
     },
@@ -8467,26 +8494,23 @@ function renderRankEvolutionChart() {
 
   rankEvoChart = new Chart(ctx, {
     type: 'line',
-    data: { datasets },
+    data: { labels, datasets },
     plugins: [qBandPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: {
-          type: 'time',
-          time: {
-            unit: 'month',
-            tooltipFormat: 'MMM yyyy',
-            displayFormats: { month: 'MMM yy' },
-          },
-          grid: { color: 'rgba(128,128,128,0.07)' },
           ticks: {
             font: { family: 'Courier New', size: 9 },
             color: 'var(--muted)',
             maxTicksLimit: 16,
+            maxRotation: 0,
+            autoSkip: true,
           },
+          grid: { color: 'rgba(128,128,128,0.07)' },
         },
         y: {
           min: 0, max: 100,
@@ -8509,20 +8533,19 @@ function renderRankEvolutionChart() {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: getComputedStyle(document.documentElement)
-            .getPropertyValue('--surface').trim() || '#fff',
-          titleColor: getComputedStyle(document.documentElement)
-            .getPropertyValue('--muted').trim() || '#777',
-          bodyColor: getComputedStyle(document.documentElement)
-            .getPropertyValue('--text').trim() || '#111',
-          borderColor: getComputedStyle(document.documentElement)
-            .getPropertyValue('--border').trim() || '#ddd',
+          backgroundColor: 'rgba(26,25,22,0.92)',
+          titleColor: '#aaa',
+          bodyColor: '#e8e6e0',
+          borderColor: 'rgba(255,255,255,0.08)',
           borderWidth: 1,
           titleFont: { family: 'Courier New', size: 9 },
           bodyFont:  { family: 'Courier New', size: 10 },
+          padding: 8,
+          filter: item => item.parsed.y !== null,
           callbacks: {
             label: item => {
               const p = item.parsed.y;
+              if (p === null) return null;
               const q = p >= 75 ? 'Q1' : p >= 50 ? 'Q2' : p >= 25 ? 'Q3' : 'Q4';
               return ` ${item.dataset.label}  ${p.toFixed(1)}%  (${q})`;
             },
@@ -8565,13 +8588,19 @@ function renderRankLegend(datasets, palette) {
 // Percentile: within the filtered universe on that snapshot month.
 // Quartile: Q1 = top 25%, Q4 = bottom 25%.
 
-// Snapshot months: union of all dates present in metricsHistory
+// Snapshot months: last trading day of each month in commonDates.
+// This is independent of metricsHistory so the table works immediately,
+// before fetch_data.py has populated cagr12/36/60 in metricsHistory.
 function getSnapshotMonths(universe) {
-  const mh = historyData?.metricsHistory;
-  if (!mh) return [];
-  const all = new Set();
-  universe.forEach(c => { if (mh[c]) Object.keys(mh[c]).forEach(d => all.add(d)); });
-  return [...all].sort();
+  const cd = historyData?.commonDates;
+  if (!cd?.length) return [];
+  // Group by YYYY-MM and take the last date in each month
+  const byMonth = {};
+  cd.forEach(d => {
+    const ym = d.slice(0, 7);
+    if (!byMonth[ym] || d > byMonth[ym]) byMonth[ym] = d;
+  });
+  return Object.values(byMonth).sort();
 }
 
 // For a given window config and snapshot month, get the CAGR for every fund
