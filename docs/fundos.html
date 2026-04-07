@@ -1231,8 +1231,7 @@
     /* prevent whitespace below chart */
     #tab-graficos { overflow: hidden; }
     /* ── Rank Evolution + Consistency Table ── */
-    #rankEvolutionSection { overflow: visible; }
-    #rankEvolutionCanvasWrap { position: relative; height: 340px; width: 100%; overflow: visible; }
+    #rankEvoCanvas { height: 220px !important; }
     #consistencyTable thead th {
       font-family: 'Courier New', monospace; font-size: 0.58rem;
       color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
@@ -1308,7 +1307,6 @@
     .fund-row-port { grid-template-columns: 16px 1fr 40px; }
     .fund-row-port input[type=range] { display: none; }
     #chartCanvas { height: 200px !important; }
-    #rankEvolutionCanvas { height: 220px !important; }
     #consistencyTable { font-size: 0.58rem; }
     #consistencyTable tbody td { padding: 5px 6px; }
     .cons-bar-wrap { max-width: 80px; }
@@ -3233,45 +3231,27 @@
     <div id="corrRollStats" style="font-family:'Courier New',monospace;font-size:0.58rem;color:var(--muted);margin-top:0.5rem;line-height:1.8"></div>
   </div>
 
-  <!-- ── Evolução do Ranking ────────────────────────────────────────── -->
-  <div id="rankEvolutionSection" style="margin-top:2rem;border-top:0.5px solid var(--border);padding-top:1.4rem">
-    <div style="font-family:'Courier New',monospace;font-size:0.58rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:0.25rem">Evolução do Ranking</div>
-    <div style="font-family:'Courier New',monospace;font-size:0.57rem;color:var(--muted);margin-bottom:1rem">Percentil diário de cada fundo no universo filtrado — 100% = melhor, 0% = pior. Cada linha é a trajetória histórica do fundo no ranking.</div>
+  <!-- ── Consistência no Ranking ─────────────────────────────────────── -->
+  <div style="margin-top:2rem;border-top:0.5px solid var(--border);padding-top:1.4rem">
+    <div style="font-family:'Courier New',monospace;font-size:0.58rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:0.25rem">Consistência no Ranking</div>
+    <div style="font-family:'Courier New',monospace;font-size:0.57rem;color:var(--muted);margin-bottom:1rem">Para cada janela de observação, mostra a distribuição do fundo pelos quartis. Barra = Q1 (top 25%) · Q2 · Q3 · Q4. Ordenável por coluna.</div>
 
-    <!-- Controls row -->
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:0.8rem">
-      <div style="display:flex;gap:4px">
-        <button class="window-btn active" id="rankWin12"  onclick="setRankWindow('12')"  data-win="12">12M</button>
-        <button class="window-btn"        id="rankWin24"  onclick="setRankWindow('24')"  data-win="24">24M</button>
-        <button class="window-btn"        id="rankWin36"  onclick="setRankWindow('36')"  data-win="36">36M</button>
-        <button class="window-btn"        id="rankWin60"  onclick="setRankWindow('60')"  data-win="60">60M</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap" id="rankFilterRow">
-        <span style="font-family:'Courier New',monospace;font-size:0.58rem;color:var(--muted)">Tipo:</span>
-        <button class="filter-chip active" data-rfilter="tipo" data-rval="" onclick="setRankFilter('tipo','',this)">Todos</button>
-        <button class="filter-chip" data-rfilter="tipo" data-rval="Long Only"    onclick="setRankFilter('tipo','Long Only',this)">Long Only</button>
-        <button class="filter-chip" data-rfilter="tipo" data-rval="Long Biased"  onclick="setRankFilter('tipo','Long Biased',this)">Long Biased</button>
-        <button class="filter-chip" data-rfilter="tipo" data-rval="Multimercado" onclick="setRankFilter('tipo','Multimercado',this)">Multimercado</button>
-        <button class="filter-chip" data-rfilter="tipo" data-rval="Renda Fixa"   onclick="setRankFilter('tipo','Renda Fixa',this)">Renda Fixa</button>
-      </div>
+    <!-- Toggle: qual CAGR estamos ranqueando -->
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+      <span style="font-family:'Courier New',monospace;font-size:0.58rem;color:var(--muted)">Ranking por:</span>
+      <button class="window-btn active" id="consCagr12" onclick="setConsCagr('12',this)" data-ccagr="12">CAGR 12M</button>
+      <button class="window-btn"        id="consCagr36" onclick="setConsCagr('36',this)" data-ccagr="36">CAGR 36M</button>
+      <button class="window-btn"        id="consCagr60" onclick="setConsCagr('60',this)" data-ccagr="60">CAGR 60M</button>
     </div>
 
-    <div id="rankEvolutionCanvasWrap"><canvas id="rankEvolutionCanvas"></canvas></div>
-    <div id="rankEvolutionLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:0.6rem"></div>
-
-    <!-- ── Tabela de Consistência ──────────────────────────────────── -->
-    <div style="margin-top:2rem;border-top:0.5px solid var(--border);padding-top:1.2rem">
-      <div style="font-family:'Courier New',monospace;font-size:0.58rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:0.25rem">Consistência no Ranking</div>
-      <div style="font-family:'Courier New',monospace;font-size:0.57rem;color:var(--muted);margin-bottom:1rem">Para cada janela de tempo, mostra a distribuição do fundo pelos quartis do ranking. Barra = Q1 (top 25%) · Q2 · Q3 · Q4. Ordenável por qualquer coluna.</div>
-      <div id="consistencyTableWrap" style="overflow-x:auto">
-        <table id="consistencyTable" style="width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:0.68rem">
-          <thead id="consistencyThead"></thead>
-          <tbody id="consistencyTbody"></tbody>
-        </table>
-      </div>
-      <div style="font-family:'Courier New',monospace;font-size:0.54rem;color:var(--muted);margin-top:0.5rem">
-        Calculado sobre snapshots mensais. Janelas omitidas quando o histórico disponível é inferior a 3 meses.
-      </div>
+    <div id="consistencyTableWrap" style="overflow-x:auto">
+      <table id="consistencyTable" style="width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:0.68rem">
+        <thead id="consistencyThead"></thead>
+        <tbody id="consistencyTbody"></tbody>
+      </table>
+    </div>
+    <div style="font-family:'Courier New',monospace;font-size:0.54rem;color:var(--muted);margin-top:0.5rem">
+      Colunas = janela de observação (quanto tempo olhamos para trás). Calculado sobre snapshots mensais.
     </div>
   </div>
 
@@ -3280,6 +3260,42 @@
 <div id="tab-analise" class="tab-pane">
 
   <div class="analysis-grid">
+
+    <!-- 0. Evolução do Ranking -->
+    <div class="analysis-card" style="grid-column:1/-1">
+      <div class="analysis-card-title" data-tip="Posição percentil do fundo no ranking ao longo do tempo — 100% = melhor do universo, 0% = pior. O toggle controla qual CAGR é usado para comparar os fundos.">Evolução do Ranking</div>
+      <div style="font-family:'Courier New',monospace;font-size:0.57rem;color:var(--muted);margin-bottom:0.9rem">Percentil diário no universo de fundos — 100% = melhor, 0% = pior.</div>
+
+      <!-- Controls -->
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem">
+        <!-- Fund selector -->
+        <div style="display:flex;gap:6px;align-items:center;flex:1;min-width:200px">
+          <select class="fund-selector-analise" id="rankEvoMainSelect" onchange="renderRankEvoChart()" style="flex:1">
+            <option value="">— selecione um fundo —</option>
+          </select>
+          <button id="rankEvoCmpBtn" onclick="toggleRankEvoCmp()"
+            style="font-family:'Courier New',monospace;font-size:0.6rem;padding:4px 10px;
+                   border:0.5px solid var(--border);background:var(--surface);color:var(--muted);
+                   border-radius:4px;cursor:pointer;white-space:nowrap">
+            + Comparar
+          </button>
+          <select class="fund-selector-analise" id="rankEvoCmpSelect" onchange="renderRankEvoChart()"
+            style="flex:1;display:none">
+            <option value="">— comparar com —</option>
+          </select>
+        </div>
+        <!-- CAGR toggle -->
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-family:'Courier New',monospace;font-size:0.58rem;color:var(--muted)">Ranking por:</span>
+          <button class="window-btn active" data-recagr="12" onclick="setRankEvoCagr('12',this)">12M</button>
+          <button class="window-btn"        data-recagr="36" onclick="setRankEvoCagr('36',this)">36M</button>
+          <button class="window-btn"        data-recagr="60" onclick="setRankEvoCagr('60',this)">60M</button>
+        </div>
+      </div>
+
+      <div style="position:relative;height:300px;width:100%"><canvas id="rankEvoCanvas"></canvas></div>
+      <div id="rankEvoStats" style="font-family:'Courier New',monospace;font-size:0.58rem;color:var(--muted);margin-top:0.5rem;line-height:1.8"></div>
+    </div>
 
     <!-- 1. Visão panorâmica do universo -->
     <div class="analysis-card" style="grid-column:1/-1">
@@ -8261,77 +8277,45 @@ function renderRollingCorrChart() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// EVOLUÇÃO DO RANKING + TABELA DE CONSISTÊNCIA
+// EVOLUÇÃO DO RANKING (aba Análise) + CONSISTÊNCIA (aba Gráficos)
 // ════════════════════════════════════════════════════════════════════════════
 
-let rankWindow    = '12';         // '12' | '24' | '36' | '60'
-let rankFilters   = { tipo: '' };
+// ── Shared state ─────────────────────────────────────────────────────────
+let rankEvoCagr   = '12';   // which CAGR window to rank by: '12'|'36'|'60'
+let rankEvoCmpOn  = false;  // comparar mode active
 let rankEvoChart  = null;
-let rankHiddenSet = new Set();    // CNPJs toggled off in legend
-let consSortCol   = null;         // window key for consistency sort
-let consSortDir   = -1;           // -1 = desc (most Q1 first), 1 = asc
 
-const RANK_PALETTE = [
-  '#e05c2a','#1a7a52','#1a4a8a','#a05c00','#7a3a7a',
-  '#2a7a7a','#b83232','#3a5a1a','#5a3a8a','#8a6a2a',
-  '#e07a3a','#2a9a62','#3a6aaa','#c07a1a','#9a4a9a',
-  '#3a9a9a','#d84040','#4a6a2a','#6a4aaa','#aa8a3a',
+let consCagrKey   = '12';   // toggle for consistency table: '12'|'36'|'60'
+let consSortCol   = null;
+let consSortDir   = -1;
+
+// Observation windows for consistency table (columns)
+const CONS_OBS_WINDOWS = [
+  { key: '6',   label: '6M',             months: 6   },
+  { key: '12',  label: '12M',            months: 12  },
+  { key: '24',  label: '24M',            months: 24  },
+  { key: 'all', label: 'Todo histórico', months: null },
 ];
 
-// Consistency table windows — ordered from shortest to longest
-const CONS_WINDOWS = [
-  { key: '6',   label: '6M',              months: 6  },
-  { key: '12',  label: '12M',             months: 12 },
-  { key: '24',  label: '24M',             months: 24 },
-  { key: '36',  label: '36M',             months: 36 },
-  { key: '60',  label: '60M',             months: 60 },
-  { key: 'all', label: 'Desde o início',  months: null },
-];
-
-// metricsHistory field for each fixed window
-const MH_CAGR_FIELD = { '12': 'cagr12', '36': 'cagr36', '60': 'cagr60' };
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-function rankPaletteFor(cnpjs) {
-  const map = {};
-  cnpjs.forEach((c, i) => { map[c] = RANK_PALETTE[i % RANK_PALETTE.length]; });
-  return map;
-}
-
-// Returns sorted list of CNPJs passing the current rank filter
-function getRankUniverse() {
-  return Object.keys(FUND_META).filter(cnpj => {
-    if (!historyData || !historyData.funds[cnpj]) return false;
-    if (rankFilters.tipo) {
-      const tipo = (FUND_META[cnpj]?.tipo || '').toLowerCase();
-      if (!tipo.includes(rankFilters.tipo.toLowerCase())) return false;
-    }
-    return true;
-  });
-}
-
-// Compute annualised CAGR (%) for a fund at a given reference date,
-// looking back `monthsBack` months. Uses the fund's quotas array.
-// Returns null when the fund has insufficient history for the window.
+// ── Core CAGR helper ─────────────────────────────────────────────────────
+// Returns annualised CAGR (%) for a fund at refIso looking back monthsBack months.
+// Uses the fund's quotas array. Returns null when insufficient data.
 function fundCagrAt(cnpj, refIso, monthsBack) {
   const fd = historyData?.funds[cnpj];
-  if (!fd) return null;
-  const dates  = fd.dates;
-  const quotas = fd.quotas;
-  if (!dates?.length) return null;
+  if (!fd?.dates?.length) return null;
+  const dates = fd.dates, quotas = fd.quotas;
 
-  // Find last index ≤ refIso
+  // hi = last index ≤ refIso
   let hi = dates.length - 1;
   while (hi >= 0 && dates[hi] > refIso) hi--;
   if (hi < 0) return null;
 
-  // Start date = refIso − monthsBack months
-  const startD = new Date(refIso);
-  startD.setMonth(startD.getMonth() - monthsBack);
-  const startIso = startD.toISOString().slice(0, 10);
+  // start date = refIso − monthsBack months
+  const ref = new Date(refIso + 'T12:00:00');
+  ref.setMonth(ref.getMonth() - monthsBack);
+  const startIso = ref.toISOString().slice(0, 10);
 
-  // Find first index ≥ startIso
+  // lo = first index ≥ startIso
   let lo = 0;
   while (lo < dates.length && dates[lo] < startIso) lo++;
   if (lo >= hi) return null;
@@ -8339,176 +8323,201 @@ function fundCagrAt(cnpj, refIso, monthsBack) {
   const q0 = quotas[lo], q1 = quotas[hi];
   if (!q0 || !q1 || q0 <= 0) return null;
 
-  const yrs = (new Date(dates[hi]) - new Date(dates[lo])) / (365.25 * 86400e3);
-  // For short windows (≤12M) accept 50% coverage; for long windows require 80%
-  const minFraction = monthsBack <= 12 ? 0.5 : 0.8;
-  if (yrs < monthsBack / 12 * minFraction) return null;
+  const yrs = (new Date(dates[hi] + 'T12:00:00') - new Date(dates[lo] + 'T12:00:00'))
+              / (365.25 * 86400e3);
+  // Short windows accept 50% coverage; long windows require 80%
+  if (yrs < monthsBack / 12 * (monthsBack <= 12 ? 0.5 : 0.8)) return null;
   return (Math.pow(q1 / q0, 1 / yrs) - 1) * 100;
 }
 
-// ── Rank Evolution Chart ──────────────────────────────────────────────────
-
-function setRankWindow(w) {
-  rankWindow = w;
-  document.querySelectorAll('[data-win]').forEach(b =>
-    b.classList.toggle('active', b.dataset.win === w));
-  renderRankEvolutionChart();
-  renderConsistencyTable();
-}
-
-function setRankFilter(key, val, btn) {
-  rankFilters[key] = val;
-  document.getElementById('rankFilterRow')
-    ?.querySelectorAll(`[data-rfilter="${key}"]`)
-    .forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  rankHiddenSet.clear();
-  renderRankEvolutionChart();
-  renderConsistencyTable();
-}
-
-function getRankUniverse() {
-  return Object.keys(FUND_META).filter(cnpj => {
-    if (!historyData || !historyData.funds[cnpj]) return false;
-    if (rankFilters.tipo) {
-      const tipo = (FUND_META[cnpj]?.tipo || '').toLowerCase();
-      if (!tipo.includes(rankFilters.tipo.toLowerCase())) return false;
-    }
-    return true;
+// Snapshot months: last trading day of each month in commonDates
+function getSnapshotMonths() {
+  const cd = historyData?.commonDates;
+  if (!cd?.length) return [];
+  const byMonth = {};
+  cd.forEach(d => {
+    const ym = d.slice(0, 7);
+    if (!byMonth[ym] || d > byMonth[ym]) byMonth[ym] = d;
   });
+  return Object.values(byMonth).sort();
 }
 
-// Build percentile series for ALL funds over shared date labels (no time adapter needed).
-// Returns { labels: [display_str,...], series: { cnpj: [pct|null,...] } }
-function buildAllPercentileSeries(universe, monthsBack) {
-  if (!historyData) return { labels: [], series: {} };
+// ── Rank Evolution Chart (aba Análise) ───────────────────────────────────
 
-  const allDates = historyData.commonDates || [];
-  const stride   = 5;
-  const labels   = [];
-  const series   = {};
-  universe.forEach(c => { series[c] = []; });
+function initRankEvoSelects() {
+  const main = document.getElementById('rankEvoMainSelect');
+  const cmp  = document.getElementById('rankEvoCmpSelect');
+  if (!main || !historyData || main.options.length > 1) return;
 
-  const fmtLabel = iso => {
-    const d  = new Date(iso + 'T12:00:00');
-    const mo = d.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
-    return mo + ' ' + String(d.getFullYear()).slice(2);
+  const cnpjs = Object.keys(FUND_META)
+    .filter(c => historyData.funds[c])
+    .sort((a, b) => {
+      const na = FUND_META[a]?.nome || a;
+      const nb = FUND_META[b]?.nome || b;
+      return na.localeCompare(nb);
+    });
+
+  const makeOpt = (cnpj, placeholder) => {
+    const o = document.createElement('option');
+    o.value = cnpj;
+    o.textContent = FUND_META[cnpj]?.short || FUND_META[cnpj]?.nome || cnpj;
+    return o;
   };
 
-  for (let i = 0; i < allDates.length; i += stride) {
-    const refIso = allDates[i];
-    labels.push(fmtLabel(refIso));
+  cnpjs.forEach(c => {
+    main.appendChild(makeOpt(c));
+    const o2 = makeOpt(c);
+    cmp.appendChild(o2);
+  });
 
-    // Compute CAGR for every fund at this date
-    const cagrMap = {};
-    universe.forEach(cnpj => { cagrMap[cnpj] = fundCagrAt(cnpj, refIso, monthsBack); });
-
-    const valid = universe.filter(c => cagrMap[c] !== null);
-    if (valid.length < 3) {
-      universe.forEach(c => series[c].push(null));
-      continue;
-    }
-
-    // Sort descending by CAGR to get rank
-    const sorted = [...valid].sort((a, b) => cagrMap[b] - cagrMap[a]);
-    const n = sorted.length;
-    const rankOf = {};
-    sorted.forEach((c, idx) => { rankOf[c] = idx; });
-
-    universe.forEach(cnpj => {
-      if (cagrMap[cnpj] === null) {
-        series[cnpj].push(null);
-      } else {
-        const pct = n === 1 ? 50 : ((n - 1 - rankOf[cnpj]) / (n - 1)) * 100;
-        series[cnpj].push(Math.round(pct * 10) / 10);
-      }
-    });
-  }
-
-  return { labels, series };
+  if (cnpjs.length) { main.value = cnpjs[0]; renderRankEvoChart(); }
 }
 
-function renderRankEvolutionChart() {
+function setRankEvoCagr(w, btn) {
+  rankEvoCagr = w;
+  document.querySelectorAll('[data-recagr]').forEach(b =>
+    b.classList.toggle('active', b.dataset.recagr === w));
+  renderRankEvoChart();
+}
+
+function toggleRankEvoCmp() {
+  rankEvoCmpOn = !rankEvoCmpOn;
+  const sel = document.getElementById('rankEvoCmpSelect');
+  const btn = document.getElementById('rankEvoCmpBtn');
+  if (sel) sel.style.display = rankEvoCmpOn ? '' : 'none';
+  if (btn) {
+    btn.textContent = rankEvoCmpOn ? '× Remover' : '+ Comparar';
+    btn.style.color = rankEvoCmpOn ? 'var(--accent)' : '';
+    btn.style.borderColor = rankEvoCmpOn ? 'var(--accent)' : '';
+  }
+  renderRankEvoChart();
+}
+
+function renderRankEvoChart() {
   if (!historyData || typeof Chart === 'undefined') return;
-  const ctx = document.getElementById('rankEvolutionCanvas');
+  const ctx = document.getElementById('rankEvoCanvas');
   if (!ctx) return;
 
-  const universe = getRankUniverse();
-  if (universe.length < 2) {
-    if (rankEvoChart) { rankEvoChart.destroy(); rankEvoChart = null; }
-    return;
+  const mainCnpj = document.getElementById('rankEvoMainSelect')?.value;
+  const cmpCnpj  = rankEvoCmpOn ? document.getElementById('rankEvoCmpSelect')?.value : null;
+  if (!mainCnpj) return;
+
+  const months = parseInt(rankEvoCagr, 10);
+
+  // Universe = all funds with history data (unfiltered for ranking)
+  const universe = Object.keys(FUND_META).filter(c => historyData.funds[c]);
+
+  // X-axis: last 12 months of trading days (stride 3 for smoothness)
+  const allDates = historyData.commonDates || [];
+  const cutoff   = (() => {
+    const d = new Date(allDates[allDates.length - 1] + 'T12:00:00');
+    d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const dates  = allDates.filter(d => d >= cutoff);
+  const stride = 3;
+  const labels = [], mainPcts = [], cmpPcts = [];
+
+  const fmt = iso => {
+    const d = new Date(iso + 'T12:00:00');
+    return d.toLocaleString('pt-BR', { month: 'short', day: 'numeric' }).replace('.', '');
+  };
+
+  for (let i = 0; i < dates.length; i += stride) {
+    const ref = dates[i];
+    labels.push(fmt(ref));
+
+    // Compute CAGR for all funds at this date
+    const vals = {};
+    universe.forEach(c => { vals[c] = fundCagrAt(c, ref, months); });
+    const valid = universe.filter(c => vals[c] !== null);
+    const n = valid.length;
+
+    const pctOf = cnpj => {
+      if (vals[cnpj] === null || n < 2) return null;
+      const below = valid.filter(c => vals[c] < vals[cnpj]).length;
+      return Math.round((below / (n - 1)) * 1000) / 10;
+    };
+
+    mainPcts.push(pctOf(mainCnpj));
+    if (cmpCnpj) cmpPcts.push(pctOf(cmpCnpj));
   }
-
-  const months  = parseInt(rankWindow, 10);
-  const palette = rankPaletteFor(universe);
-  const { labels, series } = buildAllPercentileSeries(universe, months);
-
-  if (!labels.length) {
-    if (rankEvoChart) { rankEvoChart.destroy(); rankEvoChart = null; }
-    return;
-  }
-
-  const datasets = universe.map(cnpj => ({
-    label:            FUND_META[cnpj]?.short || FUND_META[cnpj]?.nome || cnpj,
-    cnpj,
-    data:             series[cnpj] || [],
-    borderColor:      palette[cnpj],
-    backgroundColor:  palette[cnpj],
-    borderWidth:      1.8,
-    pointRadius:      0,
-    pointHoverRadius: 4,
-    tension:          0.25,
-    spanGaps:         false,
-    hidden:           rankHiddenSet.has(cnpj),
-  }));
 
   if (rankEvoChart) { rankEvoChart.destroy(); rankEvoChart = null; }
 
+  const mainColor = '#e05c2a';
+  const cmpColor  = '#1a4a8a';
+
   const qBandPlugin = {
     id: 'qBands',
-    beforeDraw(chart) {
-      const { ctx: c, chartArea: a, scales: { y } } = chart;
+    beforeDraw({ ctx: c, chartArea: a, scales: { y } }) {
       if (!a) return;
       [
-        { from: 75, to: 100, color: 'rgba(26,122,82,0.05)'  },
-        { from: 50, to: 75,  color: 'rgba(26,122,82,0.025)' },
-        { from: 25, to: 50,  color: 'rgba(184,50,50,0.025)' },
-        { from: 0,  to: 25,  color: 'rgba(184,50,50,0.05)'  },
+        { from: 75, to: 100, color: 'rgba(26,122,82,0.06)'  },
+        { from: 50, to: 75,  color: 'rgba(26,122,82,0.03)'  },
+        { from: 25, to: 50,  color: 'rgba(184,50,50,0.03)'  },
+        { from: 0,  to: 25,  color: 'rgba(184,50,50,0.06)'  },
       ].forEach(({ from, to, color }) => {
-        c.save();
-        c.fillStyle = color;
-        c.fillRect(a.left, y.getPixelForValue(to), a.width, y.getPixelForValue(from) - y.getPixelForValue(to));
+        c.save(); c.fillStyle = color;
+        c.fillRect(a.left, y.getPixelForValue(to), a.width,
+                   y.getPixelForValue(from) - y.getPixelForValue(to));
         c.restore();
       });
       [25, 50, 75].forEach(v => {
         const yv = y.getPixelForValue(v);
-        c.save();
-        c.strokeStyle = 'rgba(128,128,128,0.18)';
-        c.setLineDash([4, 4]);
-        c.lineWidth = 1;
+        c.save(); c.strokeStyle = 'rgba(128,128,128,0.15)';
+        c.setLineDash([4, 4]); c.lineWidth = 1;
         c.beginPath(); c.moveTo(a.left, yv); c.lineTo(a.right, yv); c.stroke();
+        c.restore();
+      });
+      // Q labels
+      [{ v: 87.5, t: 'Q1' }, { v: 62.5, t: 'Q2' },
+       { v: 37.5, t: 'Q3' }, { v: 12.5, t: 'Q4' }].forEach(({ v, t }) => {
+        const yv = y.getPixelForValue(v);
+        c.save(); c.fillStyle = 'rgba(128,128,128,0.35)';
+        c.font = '9px Courier New'; c.textAlign = 'left';
+        c.fillText(t, a.left + 4, yv - 3);
         c.restore();
       });
     },
   };
+
+  const datasets = [{
+    label: FUND_META[mainCnpj]?.short || FUND_META[mainCnpj]?.nome || mainCnpj,
+    data: mainPcts,
+    borderColor: mainColor,
+    backgroundColor: mainColor,
+    borderWidth: 2.2,
+    pointRadius: 0, pointHoverRadius: 5,
+    tension: 0.3, spanGaps: false,
+  }];
+
+  if (cmpCnpj && cmpPcts.length) {
+    datasets.push({
+      label: FUND_META[cmpCnpj]?.short || FUND_META[cmpCnpj]?.nome || cmpCnpj,
+      data: cmpPcts,
+      borderColor: cmpColor,
+      backgroundColor: cmpColor,
+      borderWidth: 1.6,
+      borderDash: [5, 3],
+      pointRadius: 0, pointHoverRadius: 4,
+      tension: 0.3, spanGaps: false,
+    });
+  }
 
   rankEvoChart = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets },
     plugins: [qBandPlugin],
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
+      responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: {
           ticks: {
-            font: { family: 'Courier New', size: 9 },
-            color: 'var(--muted)',
-            maxTicksLimit: 16,
-            maxRotation: 0,
-            autoSkip: true,
+            font: { family: 'Courier New', size: 9 }, color: 'var(--muted)',
+            maxTicksLimit: 13, maxRotation: 0, autoSkip: true,
           },
           grid: { color: 'rgba(128,128,128,0.07)' },
         },
@@ -8516,31 +8525,24 @@ function renderRankEvolutionChart() {
           min: 0, max: 100,
           grid: { color: 'rgba(128,128,128,0.07)' },
           ticks: {
-            font: { family: 'Courier New', size: 9 },
-            color: 'var(--muted)',
-            callback: v => {
-              if (v === 100) return 'Q1 ▲';
-              if (v === 75)  return '75%';
-              if (v === 50)  return '50%';
-              if (v === 25)  return '25%';
-              if (v === 0)   return 'Q4 ▼';
-              return '';
-            },
+            font: { family: 'Courier New', size: 9 }, color: 'var(--muted)',
+            callback: v => v === 0 ? '0%' : v === 50 ? '50%' : v === 100 ? '100%' : '',
             values: [0, 25, 50, 75, 100],
           },
         },
       },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: !!cmpCnpj,
+          labels: { font: { family: 'Courier New', size: 10 }, boxWidth: 12,
+                    color: 'var(--text)' },
+        },
         tooltip: {
-          backgroundColor: 'rgba(26,25,22,0.92)',
-          titleColor: '#aaa',
-          bodyColor: '#e8e6e0',
-          borderColor: 'rgba(255,255,255,0.08)',
-          borderWidth: 1,
+          backgroundColor: 'rgba(26,25,22,0.93)',
+          titleColor: '#aaa', bodyColor: '#e8e6e0',
+          borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
           titleFont: { family: 'Courier New', size: 9 },
-          bodyFont:  { family: 'Courier New', size: 10 },
-          padding: 8,
+          bodyFont:  { family: 'Courier New', size: 10 }, padding: 8,
           filter: item => item.parsed.y !== null,
           callbacks: {
             label: item => {
@@ -8555,149 +8557,28 @@ function renderRankEvolutionChart() {
     },
   });
 
-  renderRankLegend(datasets, palette);
-}
-
-function renderRankLegend(datasets, palette) {
-  const wrap = document.getElementById('rankEvolutionLegend');
-  if (!wrap) return;
-  wrap.innerHTML = '';
-  datasets.forEach(ds => {
-    const btn = document.createElement('button');
-    btn.className = 'rank-legend-dot' + (rankHiddenSet.has(ds.cnpj) ? ' hidden' : '');
-    btn.innerHTML =
-      `<span class="rank-legend-swatch" style="background:${palette[ds.cnpj]}"></span>${ds.label}`;
-    btn.onclick = () => {
-      if (rankHiddenSet.has(ds.cnpj)) rankHiddenSet.delete(ds.cnpj);
-      else rankHiddenSet.add(ds.cnpj);
-      renderRankEvolutionChart();
-    };
-    wrap.appendChild(btn);
-  });
-}
-
-// ── Consistency Table ─────────────────────────────────────────────────────
-//
-// For each snapshot month in metricsHistory:
-//   • 12M / 36M / 60M  → read directly from metricsHistory.cagr12/36/60
-//                         (populated by fetch_data.py after this deploy)
-//   • 6M  / 24M        → compute from fund quotas via fundCagrAt()
-//   • all              → CAGR from commonDates[0] (site history start) to
-//                         the snapshot month — same denominator for all funds
-//
-// Percentile: within the filtered universe on that snapshot month.
-// Quartile: Q1 = top 25%, Q4 = bottom 25%.
-
-// Snapshot months: last trading day of each month in commonDates.
-// This is independent of metricsHistory so the table works immediately,
-// before fetch_data.py has populated cagr12/36/60 in metricsHistory.
-function getSnapshotMonths(universe) {
-  const cd = historyData?.commonDates;
-  if (!cd?.length) return [];
-  // Group by YYYY-MM and take the last date in each month
-  const byMonth = {};
-  cd.forEach(d => {
-    const ym = d.slice(0, 7);
-    if (!byMonth[ym] || d > byMonth[ym]) byMonth[ym] = d;
-  });
-  return Object.values(byMonth).sort();
-}
-
-// For a given window config and snapshot month, get the CAGR for every fund
-// in the universe. Returns {cnpj: cagrValue} — only funds with valid data.
-function getCagrSnapshot(universe, winCfg, snapshotIso) {
-  const mh = historyData?.metricsHistory;
-  const result = {};
-
-  universe.forEach(cnpj => {
-    let val = null;
-
-    if (winCfg.key === 'all') {
-      // CAGR from site history start to this snapshot
-      const siteStart = historyData?.commonDates?.[0];
-      if (!siteStart) return;
-      const fd = historyData?.funds[cnpj];
-      if (!fd?.dates?.length) return;
-      // Get quotas at siteStart and snapshotIso
-      const findQuota = (iso) => {
-        const d = fd.dates, q = fd.quotas;
-        for (let i = d.length - 1; i >= 0; i--) {
-          if (d[i] <= iso) return q[i];
-        }
-        return null;
-      };
-      const q0 = findQuota(siteStart);
-      const q1 = findQuota(snapshotIso);
-      if (!q0 || !q1 || q0 <= 0) return;
-      const yrs = (new Date(snapshotIso) - new Date(siteStart)) / (365.25 * 86400e3);
-      if (yrs < 0.25) return;
-      val = (Math.pow(q1 / q0, 1 / yrs) - 1) * 100;
-
-    } else if (MH_CAGR_FIELD[winCfg.key]) {
-      // Read from metricsHistory
-      const entry = mh?.[cnpj]?.[snapshotIso];
-      val = entry?.[MH_CAGR_FIELD[winCfg.key]] ?? null;
-      // Fallback: compute from quotas if metricsHistory field is missing
-      // (happens for dates before this deploy added cagr fields)
-      if (val === null) val = fundCagrAt(cnpj, snapshotIso, winCfg.months);
-
-    } else {
-      // 6M or 24M — always compute from quotas
-      val = fundCagrAt(cnpj, snapshotIso, winCfg.months);
+  // Stats line
+  const statsEl = document.getElementById('rankEvoStats');
+  if (statsEl && mainPcts.length) {
+    const valid = mainPcts.filter(v => v !== null);
+    if (valid.length) {
+      const avg = valid.reduce((s, v) => s + v, 0) / valid.length;
+      const q1pct = Math.round(valid.filter(v => v >= 75).length / valid.length * 100);
+      const nome = FUND_META[mainCnpj]?.short || FUND_META[mainCnpj]?.nome || '';
+      const q = avg >= 75 ? 'Q1' : avg >= 50 ? 'Q2' : avg >= 25 ? 'Q3' : 'Q4';
+      statsEl.textContent =
+        `${nome} · média ${avg.toFixed(1)}% (${q}) · ${q1pct}% do tempo no Q1 · janela: últimos 12 meses · ranking por CAGR ${rankEvoCagr}M`;
     }
-
-    if (val !== null && isFinite(val)) result[cnpj] = val;
-  });
-  return result;
-}
-
-// Convert a series of percentile values to quartile distribution
-function pctToQuartiles(pcts) {
-  if (!pcts?.length) return null;
-  let q1 = 0, q2 = 0, q3 = 0, q4 = 0;
-  for (const p of pcts) {
-    if      (p >= 75) q1++;
-    else if (p >= 50) q2++;
-    else if (p >= 25) q3++;
-    else              q4++;
   }
-  const n = pcts.length;
-  return { q1: q1/n, q2: q2/n, q3: q3/n, q4: q4/n, n };
 }
 
-// Build the full percentile matrix:
-// { cnpj → { windowKey → [percentile_per_month, ...] } }
-function buildConsistencyData(universe) {
-  const months = getSnapshotMonths(universe);
-  if (!months.length) return {};
+// ── Consistency Table (aba Gráficos) ─────────────────────────────────────
 
-  const out = {};
-  universe.forEach(c => { out[c] = {}; });
-
-  CONS_WINDOWS.forEach(win => {
-    // Collect percentile per snapshot month
-    const perMonth = {}; // cnpj → [pct]
-    universe.forEach(c => { perMonth[c] = []; });
-
-    months.forEach(mo => {
-      const cagrMap = getCagrSnapshot(universe, win, mo);
-      const entries = Object.entries(cagrMap).sort((a, b) => b[1] - a[1]);
-      const n = entries.length;
-      if (n < 3) return;
-      entries.forEach(([cnpj], idx) => {
-        // percentile 0–100: 100 = best (idx=0 in descending sort)
-        perMonth[cnpj].push(((n - 1 - idx) / (n - 1)) * 100);
-      });
-    });
-
-    universe.forEach(cnpj => {
-      if (perMonth[cnpj].length >= 3) {
-        out[cnpj][win.key] = perMonth[cnpj];
-      }
-    });
-  });
-
-  return out;
+function setConsCagr(key, btn) {
+  consCagrKey = key;
+  document.querySelectorAll('[data-ccagr]').forEach(b =>
+    b.classList.toggle('active', b.dataset.ccagr === key));
+  renderConsistencyTable();
 }
 
 function renderConsistencyTable() {
@@ -8705,30 +8586,65 @@ function renderConsistencyTable() {
   const tbody = document.getElementById('consistencyTbody');
   if (!thead || !tbody || !historyData) return;
 
-  const universe = getRankUniverse();
-  const consData = buildConsistencyData(universe);
+  const universe = Object.keys(FUND_META).filter(c => historyData.funds[c]);
+  const months   = parseInt(consCagrKey, 10);  // which CAGR to rank by
+  const snapshots = getSnapshotMonths();
 
-  // Only show windows that have data for at least one fund (≥3 months)
-  const activeWins = CONS_WINDOWS.filter(w =>
-    universe.some(c => consData[c]?.[w.key]?.length >= 3)
-  );
-  if (!activeWins.length) {
-    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--muted);font-family:\'Courier New\',monospace;font-size:0.65rem;padding:1rem">Dados de consistência disponíveis após a primeira execução com o novo código.</td></tr>';
-    thead.innerHTML = '<tr><th>Fundo</th><th>Aguardando dados…</th></tr>';
-    return;
-  }
-
-  // Per-fund quartile stats
+  // For each observation window, compute % of months in each quartile
+  // by looking at the ranking of `consCagrKey`-CAGR in the last `obs.months` months
   const rows = universe.map(cnpj => {
     const nome  = FUND_META[cnpj]?.short || FUND_META[cnpj]?.nome || cnpj;
     const stats = {};
-    activeWins.forEach(w => {
-      stats[w.key] = pctToQuartiles(consData[cnpj]?.[w.key]);
+
+    CONS_OBS_WINDOWS.forEach(obs => {
+      // Filter snapshots to the observation window
+      let filtered;
+      if (obs.key === 'all') {
+        filtered = snapshots;
+      } else {
+        const cutoff = (() => {
+          if (!snapshots.length) return '';
+          const d = new Date(snapshots[snapshots.length - 1] + 'T12:00:00');
+          d.setMonth(d.getMonth() - obs.months);
+          return d.toISOString().slice(0, 10);
+        })();
+        filtered = snapshots.filter(d => d >= cutoff);
+      }
+      if (filtered.length < 3) return;
+
+      const pcts = [];
+      filtered.forEach(mo => {
+        // Compute ranking-CAGR for all funds at this snapshot
+        const vals = {};
+        universe.forEach(c => { vals[c] = fundCagrAt(c, mo, months); });
+        const valid = universe.filter(c => vals[c] !== null);
+        const n = valid.length;
+        if (n < 3) return;
+        if (vals[cnpj] === null) return;
+        const below = valid.filter(c => vals[c] < vals[cnpj]).length;
+        pcts.push((below / (n - 1)) * 100);
+      });
+
+      if (pcts.length < 3) return;
+      let q1 = 0, q2 = 0, q3 = 0, q4 = 0;
+      pcts.forEach(p => {
+        if      (p >= 75) q1++;
+        else if (p >= 50) q2++;
+        else if (p >= 25) q3++;
+        else              q4++;
+      });
+      const n = pcts.length;
+      stats[obs.key] = { q1: q1/n, q2: q2/n, q3: q3/n, q4: q4/n, n };
     });
+
     return { cnpj, nome, stats };
   });
 
-  // Sort: by % in Q1 of the selected column (desc by default)
+  // Active columns
+  const activeCols = CONS_OBS_WINDOWS.filter(w =>
+    rows.some(r => r.stats[w.key]));
+
+  // Sort
   if (consSortCol) {
     rows.sort((a, b) => {
       const va = a.stats[consSortCol]?.q1 ?? -1;
@@ -8739,25 +8655,30 @@ function renderConsistencyTable() {
 
   // Header
   thead.innerHTML = `<tr>
-    <th style="text-align:left;cursor:default">Fundo</th>
-    ${activeWins.map(w => `<th
-      onclick="sortConsistency('${w.key}')"
-      class="${consSortCol === w.key ? 'cons-sorted' : ''}"
+    <th style="text-align:left;cursor:default;padding:6px 10px;border-bottom:1px solid var(--border);
+               font-family:'Courier New',monospace;font-size:0.58rem;color:var(--muted);
+               text-transform:uppercase;letter-spacing:0.06em">Fundo</th>
+    ${activeCols.map(w => `<th onclick="sortConsistency('${w.key}')"
+      style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center;
+             cursor:pointer;font-family:'Courier New',monospace;font-size:0.58rem;
+             color:${consSortCol===w.key?'var(--accent)':'var(--muted)'};
+             text-transform:uppercase;letter-spacing:0.06em;white-space:nowrap"
       title="% do tempo em cada quartil · ordenar por Q1"
-    >${w.label} ${consSortCol === w.key ? (consSortDir < 0 ? '↓' : '↑') : '↕'}</th>`
+    >${w.label} ${consSortCol===w.key?(consSortDir<0?'↓':'↑'):'↕'}</th>`
     ).join('')}
   </tr>`;
 
   // Body
   tbody.innerHTML = rows.map(({ cnpj, nome, stats }) => {
-    const cells = activeWins.map(w => {
+    const cells = activeCols.map(w => {
       const s = stats[w.key];
-      if (!s) return `<td><span class="cons-na">—</span></td>`;
+      if (!s) return `<td style="text-align:center;padding:7px 10px"><span style="color:var(--muted);font-size:0.6rem">—</span></td>`;
       const q1p = Math.round(s.q1 * 100);
       const q2p = Math.round(s.q2 * 100);
       const q3p = Math.round(s.q3 * 100);
-      const q4p = Math.round(s.q4 * 100);
-      return `<td title="Q1 ${q1p}% · Q2 ${q2p}% · Q3 ${q3p}% · Q4 ${q4p}% · ${s.n} meses">
+      const q4p = 100 - q1p - q2p - q3p;
+      return `<td style="text-align:center;padding:7px 10px"
+        title="Q1 ${q1p}% · Q2 ${q2p}% · Q3 ${q3p}% · Q4 ${q4p}% · ${s.n} meses">
         <div class="cons-bar-wrap">
           <div class="cons-bar-q1" style="width:${q1p}%"></div>
           <div class="cons-bar-q2" style="width:${q2p}%"></div>
@@ -8767,7 +8688,10 @@ function renderConsistencyTable() {
         <div class="cons-pct"><span class="cons-pct-q1">${q1p}%</span> no Q1</div>
       </td>`;
     }).join('');
-    return `<tr><td>${nome}</td>${cells}</tr>`;
+    return `<tr style="border-bottom:0.5px solid var(--border)">
+      <td style="padding:7px 10px;font-family:'Courier New',monospace;font-size:0.65rem">${nome}</td>
+      ${cells}
+    </tr>`;
   }).join('');
 }
 
@@ -8777,12 +8701,17 @@ function sortConsistency(key) {
   renderConsistencyTable();
 }
 
+// ── Init ─────────────────────────────────────────────────────────────────
+
 function initRankEvolution() {
   if (!historyData) return;
-  renderRankEvolutionChart();
   renderConsistencyTable();
 }
 
+function initRankEvoAnalise() {
+  if (!historyData) return;
+  initRankEvoSelects();
+}
 // ════════════════════════════════════════════════════════════════════════════
 // RADAR RISCO × RETORNO (SCATTER)
 // ════════════════════════════════════════════════════════════════════════════
@@ -11641,6 +11570,7 @@ function renderEfficientFrontier() {
 
 // ── Wire: called after existing analysis renders complete ──────────────────
 function initNewAnalysis() {
+  initRankEvoAnalise();
   renderAdvMetricsTable();
   initRollingAlphaSelect();
   initFundProfileSelect();
