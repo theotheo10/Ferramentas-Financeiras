@@ -5219,10 +5219,14 @@ Use o stress test para simular cenários de crise histórica.">Max. drawdown</di
     const volPct = Math.sqrt(var_ * 252) * 100;
     fundVolMap[cnpj] = volPct;
 
-    const fData  = funds.find(f => f.cnpjFmt === cnpj);
-    const target = fData ? calcTargetReturn(fData, undefined, undefined, portHorizonte) : null;
-    if (target && volPct > 0) {
-      fundSharpeMap[cnpj] = (target.value - cdiForAlloc) / volPct;
+    // Sharpe histórico: usa CAGR histórico real do fundo (não retorno alvo estimado)
+    // O Sharpe armazenado em metrics já usa o CDI do período correto — usamos ele diretamente.
+    // Fallback: recalcula com cagrHist e CDI atual se metrics.sharpe não disponível.
+    const fdMetrics = historyData.funds[cnpj]?.metrics;
+    if (fdMetrics?.sharpe != null) {
+      fundSharpeMap[cnpj] = fdMetrics.sharpe;
+    } else if (fdMetrics?.cagrHist != null && volPct > 0) {
+      fundSharpeMap[cnpj] = (fdMetrics.cagrHist - cdiForAlloc) / volPct;
     }
   }
 
