@@ -359,22 +359,19 @@ def load_or_compute_breadth(force_refresh: bool = False) -> pd.DataFrame:
 
 def incremental_update() -> pd.DataFrame:
     """
-    Atualiza preços e recomputa breadth de forma confiável.
+    Atualiza preços e recomputa breadth completo a cada execução.
 
-    Estratégia: sempre recomputa o breadth dos últimos MA200_WARMUP_DAYS+60 dias
-    a partir do prices.parquet atualizado. Isso garante que:
-    - Gaps por tickers novos (count=0) são sempre curados automaticamente.
-    - Não há dependência do estado do breadth.parquet em disco (que pode
-      estar stale após checkout do git).
-    - A janela de recompute é longa o suficiente para MA200 completo.
+    Recomputa o breadth inteiro a partir do prices.parquet — sem cache,
+    sem janelas parciais, sem risco de gaps ou stale rows. O recompute
+    leva ~30s e é a única abordagem que garante consistência permanente
+    independente do estado do repositório no checkout.
     """
-    logger.info("Running incremental update...")
+    logger.info("Running incremental update (full breadth recompute)...")
 
-    prices  = load_or_fetch_prices()
-    today   = pd.Timestamp.today().normalize()
+    prices          = load_or_fetch_prices()
     last_price_date = prices.index.max()
-
-    all_tickers = get_all_historical_tickers(IBOV_COMPOSITION_HISTORY)
+    today           = pd.Timestamp.today().normalize()
+    all_tickers     = get_all_historical_tickers(IBOV_COMPOSITION_HISTORY)
 
     # Busca preços recentes (últimos 5 dias para correções tardias)
     fetch_start = (last_price_date - timedelta(days=5)).strftime("%Y-%m-%d")
@@ -397,39 +394,17 @@ def incremental_update() -> pd.DataFrame:
         prices.to_parquet(PRICES_PATH)
         logger.info(f"Prices updated to {prices.index.max().date()}")
 
-    # ── Recomputa breadth sempre a partir de uma janela longa ────────────────
-    # Não lemos o breadth.parquet em cache para evitar stale rows persistentes.
-    # A janela cobre MA200_WARMUP_DAYS (250) + 60 dias de margem, garantindo
-    # que qualquer gap recente seja corrigido automaticamente.
-    recompute_from = today - timedelta(days=MA200_WARMUP_DAYS + 60)
+    # Recomputa breadth completo — garante zero gaps e zero stale rows
+    logger.info(f"Recomputando breadth completo ({len(prices)} dias de preços)...")
+    breadth = compute_breadth(prices)
 
-    # Carrega breadth existente apenas para preservar o histórico antigo
-    old_breadth = pd.DataFrame()
-    if BREADTH_PATH.exists():
-        try:
-            cached = pd.read_parquet(BREADTH_PATH)
-            old_breadth = cached[cached.index < recompute_from]
-        except Exception as e:
-            logger.warning(f"Não foi possível ler breadth.parquet: {e} — recompute completo")
-
-    recent_prices = prices[prices.index >= recompute_from]
-    logger.info(f"Recomputando breadth desde {recompute_from.date()} ({len(recent_prices)} dias de preços)")
-    new_breadth = compute_breadth(recent_prices)
-
-    # Verifica stale rows na nova computação (sinal de problema nos preços)
-    if not new_breadth.empty:
-        stale = ((new_breadth['count_20'] == 0) & (new_breadth['n_constituents'] > 5)).sum()
-        if stale > 0:
-            logger.warning(f"Atenção: {stale} stale rows na nova computação — prices.parquet pode estar incompleto")
-
-    if not old_breadth.empty:
-        breadth = pd.concat([old_breadth, new_breadth])
-        breadth = breadth[~breadth.index.duplicated(keep="last")].sort_index()
+    stale = ((breadth['count_20'] == 0) & (breadth['n_constituents'] > 5)).sum()
+    if stale > 0:
+        logger.warning(f"{stale} stale rows detectadas — prices.parquet pode estar incompleto para alguns tickers")
     else:
-        breadth = new_breadth
+        logger.info(f"Breadth OK: {len(breadth)} linhas, zero gaps, até {breadth.index.max().date()}")
 
     breadth.to_parquet(BREADTH_PATH)
-    logger.info(f"Breadth atualizado: {len(breadth)} linhas, até {breadth.index.max().date()}")
     return breadth
 
 
