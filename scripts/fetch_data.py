@@ -652,9 +652,13 @@ def fetch_ipca_focus() -> dict:
             raise ValueError("Olinda retornou vazio")
 
         latest_date = max(r["Data"] for r in records)
+        # baseCalculo=0 → série original (não suavizada) — coincide com o PDF Focus
+        # baseCalculo=1 → série suavizada (valores sistematicamente maiores)
         by_ano = {int(r["DataReferencia"]): float(r["Mediana"])
                   for r in records
-                  if r["Data"] == latest_date and r.get("Mediana") is not None}
+                  if r["Data"] == latest_date
+                  and r.get("Mediana") is not None
+                  and r.get("baseCalculo", 0) == 0}
 
         ipca_12m = by_ano.get(today_year) or by_ano.get(today_year + 1)
         # LP = ano mais distante disponível
