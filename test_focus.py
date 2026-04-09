@@ -1,0 +1,18 @@
+import urllib.request, json
+
+url = ("https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
+       "ExpectativasMercadoAnuais"
+       "?%24filter=Indicador%20eq%20%27IPCA%27"
+       "&%24orderby=Data%20desc&%24top=20&%24format=json")
+
+req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+with urllib.request.urlopen(req, timeout=10) as resp:
+    raw = json.loads(resp.read())
+
+records = raw.get("value", [])
+latest_date = max(r["Data"] for r in records)
+print(f"Data mais recente na API: {latest_date}")
+print()
+print("Todos os registros:")
+for r in sorted(records, key=lambda x: (x["Data"], x["DataReferencia"]), reverse=True):
+    print(f"  Data={r['Data']}  DataReferencia={r['DataReferencia']}  Mediana={r.get('Mediana')}")
