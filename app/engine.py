@@ -361,6 +361,11 @@ def incremental_update() -> pd.DataFrame:
     """
     Update prices and breadth for the latest trading day(s) only.
     Much faster than full recompute.
+
+    Also detects and heals historical rows where count=0 but n_constituents>5
+    — these arise when breadth.parquet was written before prices.parquet had
+    data for a newly-added IBOV constituent. The fix recomputes from the
+    earliest such stale row (with full MA200 warmup).
     """
     logger.info("Running incremental update...")
 
@@ -395,12 +400,28 @@ def incremental_update() -> pd.DataFrame:
         prices.to_parquet(PRICES_PATH)
         logger.info(f"Prices updated to {prices.index.max().date()}")
 
-    # Recompute breadth for last 30 days (covers any gaps or corrections)
-    cutoff      = today - timedelta(days=30)
-    old_breadth = breadth[breadth.index < cutoff]
+    # ── Detect stale zero-count rows (gaps from past ticker additions) ───────
+    # A row with count_20=0 but n_constituents>5 means breadth was computed
+    # before prices.parquet had data for the new ticker. Heal by recomputing
+    # from the earliest such row (these arise when a new IBOV constituent is
+    # added but yfinance hadn't served prices yet at the time of computation).
+    stale_mask = (breadth.get('count_20', pd.Series(dtype=float)) == 0) & \
+                 (breadth.get('n_constituents', pd.Series(dtype=float)) > 5)
+    stale_rows = breadth[stale_mask]
 
-    # Need 250 days of prices for MA200 warmup
-    recent_prices = prices[prices.index >= cutoff - timedelta(days=MA200_WARMUP_DAYS + 10)]
+    if not stale_rows.empty:
+        earliest_stale = stale_rows.index.min()
+        logger.info(
+            f"Detected {len(stale_rows)} stale breadth rows (count=0) "
+            f"from {earliest_stale.date()} — healing with current prices"
+        )
+        heal_cutoff = earliest_stale - timedelta(days=MA200_WARMUP_DAYS + 10)
+    else:
+        # Normal case: recompute last 30 days only
+        heal_cutoff = today - timedelta(days=30)
+
+    old_breadth   = breadth[breadth.index < (stale_rows.index.min() if not stale_rows.empty else heal_cutoff)]
+    recent_prices = prices[prices.index >= heal_cutoff]
     new_breadth   = compute_breadth(recent_prices)
 
     breadth = pd.concat([old_breadth, new_breadth])
