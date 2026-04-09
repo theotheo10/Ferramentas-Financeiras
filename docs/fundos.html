@@ -3984,8 +3984,24 @@ function calcPortfolioTargetReturn(selected, wNorm, historyData, horizonte) {
     portVol = Math.sqrt(Math.max(0, portVar));
   }
 
-  const excess = (cdiTarget != null) ? expReturn - cdiTarget : null;
-  const sharpe = (excess != null && portVol && portVol > 0) ? excess / portVol : null;
+  // Sharpe histórico: usa CAGR histórico real ponderado (não retorno alvo).
+  // Garante que fundos RF que batem o CDI historicamente contribuem positivamente,
+  // ao contrário do retorno alvo que pode ser pull-to-anchor para baixo do CDI.
+  let portHistCagrCalc = null;
+  {
+    let wCagr = 0, wTotal = 0;
+    for (const cnpj of selected) {
+      const cagrHist = historyData?.funds[cnpj]?.metrics?.cagrHist;
+      if (cagrHist != null && wNorm[cnpj] != null) {
+        wCagr  += wNorm[cnpj] * cagrHist;
+        wTotal += wNorm[cnpj];
+      }
+    }
+    if (wTotal > 0) portHistCagrCalc = wCagr / wTotal;
+  }
+  const sharpe = (portHistCagrCalc != null && cdiTarget != null && portVol && portVol > 0)
+    ? (portHistCagrCalc - cdiTarget) / portVol
+    : null;
   return { expReturn, cdiTarget, sharpe };
 }
 
@@ -5245,8 +5261,24 @@ Use o stress test para simular cenários de crise histórica.">Max. drawdown</di
   } else if (selected.length === 1) {
     portVolAlloc = fundVolMap[selected[0]] ?? null;
   }
-  const portSharpeAlloc = (portVolAlloc && portVolAlloc > 0 && portTarget?.expReturn != null)
-    ? (portTarget.expReturn - cdiForAlloc) / portVolAlloc
+
+  // Portfolio Sharpe: usa CAGR histórico ponderado (consistente com Ret./Risco individual)
+  // O retorno alvo (target) é usado para projeção, mas o Sharpe exibido deve refletir
+  // o histórico real — evita Sharpe negativo para RF que bate CDI historicamente.
+  let portHistCagr = null;
+  {
+    let weightedCagr = 0, totalW = 0;
+    for (const cnpj of selected) {
+      const cagrHist = historyData.funds[cnpj]?.metrics?.cagrHist;
+      if (cagrHist != null && wNorm[cnpj] != null) {
+        weightedCagr += wNorm[cnpj] * cagrHist;
+        totalW += wNorm[cnpj];
+      }
+    }
+    if (totalW > 0) portHistCagr = weightedCagr / totalW;
+  }
+  const portSharpeAlloc = (portVolAlloc && portVolAlloc > 0 && portHistCagr != null)
+    ? (portHistCagr - cdiForAlloc) / portVolAlloc
     : null;
 
   const fmtVol = v => v == null
