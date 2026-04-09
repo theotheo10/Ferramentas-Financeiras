@@ -10,9 +10,10 @@ with urllib.request.urlopen(req, timeout=10) as resp:
     raw = json.loads(resp.read())
 
 records = raw.get("value", [])
-latest_date = max(r["Data"] for r in records)
-print(f"Data mais recente na API: {latest_date}")
+print("Todos os campos do primeiro registro:")
+print(json.dumps(records[0], indent=2, ensure_ascii=False))
 print()
-print("Todos os registros:")
-for r in sorted(records, key=lambda x: (x["Data"], x["DataReferencia"]), reverse=True):
-    print(f"  Data={r['Data']}  DataReferencia={r['DataReferencia']}  Mediana={r.get('Mediana')}")
+print("Registros DataReferencia=2026:")
+for r in records:
+    if r["DataReferencia"] == "2026":
+        print(json.dumps(r, indent=2, ensure_ascii=False))
