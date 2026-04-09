@@ -550,16 +550,32 @@ def fetch_ntnb() -> dict:
                 try:
                     tipo = parts[0].strip().strip('"')
                     if "NTN-B" not in tipo.upper() or "PRINCIPAL" in tipo.upper(): continue
-                    venc_raw = None
-                    for col in [2, 3, 1]:
-                        cv = parts[col].strip().strip('"') if col < len(parts) else ""
-                        if "/" in cv and len(cv) >= 8:
-                            venc_raw = cv; break
-                    if not venc_raw: continue
-                    dv, mv, yv = venc_raw.split("/")
-                    venc_iso = f"{yv.zfill(4)}-{mv.zfill(2)}-{dv.zfill(2)}"
+
+                    # Parse vencimento: suporta dois formatos:
+                    #   Novo: YYYYMMDD (ex: "20260815") — col[4]
+                    #   Antigo: DD/MM/YYYY (ex: "15/08/2026") — busca em cols [2,3,1]
+                    venc_iso = None
+
+                    # Tenta formato novo (YYYYMMDD) em col[4]
+                    if len(parts) > 4:
+                        cv = parts[4].strip().strip('"')
+                        if len(cv) == 8 and cv.isdigit():
+                            venc_iso = f"{cv[:4]}-{cv[4:6]}-{cv[6:8]}"
+
+                    # Fallback: formato antigo com barras em cols [2,3,1]
+                    if not venc_iso:
+                        for col in [2, 3, 1]:
+                            cv = parts[col].strip().strip('"') if col < len(parts) else ""
+                            if "/" in cv and len(cv) >= 8:
+                                dv, mv, yv = cv.split("/")
+                                venc_iso = f"{yv.zfill(4)}-{mv.zfill(2)}-{dv.zfill(2)}"
+                                break
+
+                    if not venc_iso: continue
+
+                    # Taxa indicativa: col[7] no novo formato, fallback cols [5,4,6,3]
                     taxa = None
-                    for col in [5, 4, 6, 3]:
+                    for col in [7, 5, 4, 6, 3]:
                         if col >= len(parts): continue
                         try:
                             v = float(parts[col].strip().strip('"').replace(",", "."))
