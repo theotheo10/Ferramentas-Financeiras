@@ -246,7 +246,10 @@ def main():
     ibov_df = update_ibov_price()
 
     # ── PASSO 6: serializar breadth.json ─────────────────────────────────────
+    # Sempre relê o breadth.parquet do disco para garantir que usamos
+    # a versão final após todos os passos de backfill e manutenção.
     logger.info("Serializando breadth.json...")
+    breadth = pd.read_parquet(ENGINE_BREADTH_PATH)
     records = breadth_to_records(breadth)
     latest  = build_latest(breadth)
 
