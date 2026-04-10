@@ -5165,20 +5165,24 @@ function updatePortfolio() {
     ? '<span class="port-metric-val na">N/D</span>'
     : `<span class="port-metric-val neu" style="font-size:0.95rem">${v.toFixed(2)}</span>`;
 
-  // Retorno líquido ponderado do portfólio — horizonte = slider RF (ou 5a como fallback)
+  // Retorno líquido do portfólio — money-weighted CAGR (consistente com tabela IR)
+  // Simula cada fundo com seu aporte real e soma os valores líquidos terminais.
+  // CAGR = (total_líquido / total_aporte)^(1/anos) - 1
   let portNetReturn = null;
   const netHorizonte = hasRF ? (portHorizonte || 5) : 5;
-  if (portTarget?.expReturn != null) {
-    let netSum = 0;
+  if (portTarget?.expReturn != null && patrimonio > 0) {
+    let totalLiq = 0;
     for (const cnpj of selected) {
       const meta   = FUND_META[cnpj] || {};
       const trib   = meta.trib || 'RV';
       const fDataI = funds.find(f => f.cnpjFmt === cnpj);
       const tgtI   = fDataI ? calcTargetReturn(fDataI, undefined, undefined, portHorizonte) : null;
       const gross  = tgtI ? tgtI.value : portTarget.expReturn;
-      netSum += wNorm[cnpj] * calcNetReturn(gross, netHorizonte, trib);
+      const aporte = wNorm[cnpj] * patrimonio;
+      const sim    = simularFundo(aporte, gross, trib, netHorizonte);
+      totalLiq    += sim ? sim.valorLiquido : aporte * Math.pow(1 + gross / 100, netHorizonte);
     }
-    portNetReturn = netSum;
+    portNetReturn = (Math.pow(totalLiq / patrimonio, 1 / netHorizonte) - 1) * 100;
   }
 
   // Métricas — grid 3 colunas, altura fixa
