@@ -5983,7 +5983,7 @@ function renderIR() {
 
     // Retorno alvo do fundo
     const fData  = funds.find(f => f.cnpjFmt === cnpj);
-    const target = fData ? calcTargetReturn(fData) : null;
+    const target = fData ? calcTargetReturn(fData, undefined, undefined, anos) : null;
     const retorno = target ? target.value : null;
 
     if (retorno === null) {
@@ -10360,7 +10360,7 @@ function renderCCTimeline() {
         return `<div style="padding:0.4rem 0.5rem;background:var(--surface);border:0.5px solid var(--border);border-radius:5px;text-align:center;min-width:0;overflow:hidden">
           <div style="font-family:'Courier New',monospace;font-size:0.52rem;color:var(--muted);margin-bottom:2px">${y}</div>
           <div style="font-family:'Courier New',monospace;font-size:0.62rem;color:var(--red);font-weight:bold;white-space:nowrap">${fmtBRL(v)}</div>
-          ${yearsLeft > 0 ? `<div style="font-family:'Courier New',monospace;font-size:0.48rem;color:var(--muted);margin-top:1px;white-space:nowrap" data-tip="Custo de oportunidade: quanto esse capital deixou de crescer">+${fmtBRL(oppCost)} potencial</div>` : ''}
+          ${yearsLeft > 0 ? `<div style="font-family:'Courier New',monospace;font-size:0.48rem;color:var(--muted);margin-top:1px;white-space:nowrap" title="Custo de oportunidade: esse capital deixaria de crescer +${fmtBRL(oppCost)} nos ${yearsLeft} anos restantes">custo: +${fmtBRL(oppCost)}</div>` : ''}
         </div>`;
       }).join('')}
     </div>
