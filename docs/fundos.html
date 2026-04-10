@@ -5165,13 +5165,17 @@ function updatePortfolio() {
     ? '<span class="port-metric-val na">N/D</span>'
     : `<span class="port-metric-val neu" style="font-size:0.95rem">${v.toFixed(2)}</span>`;
 
-  // Retorno líquido do portfólio — money-weighted CAGR (consistente com tabela IR)
-  // Simula cada fundo com seu aporte real e soma os valores líquidos terminais.
-  // CAGR = (total_líquido / total_aporte)^(1/anos) - 1
-  let portNetReturn = null;
+  // Retorno bruto e líquido do portfólio — ambos money-weighted CAGR (comparáveis)
+  // Simula o valor terminal de cada fundo com seu aporte real.
+  // CAGR bruto  = (total_bruto  / patrimonio)^(1/anos) - 1
+  // CAGR líquido = (total_líquido / patrimonio)^(1/anos) - 1
+  // Usar a mesma metodologia garante que líquido ≤ bruto sempre.
+  let portNetReturn  = null;
+  let portGrossRetMW = null;  // retorno bruto money-weighted (para comparação)
   const netHorizonte = hasRF ? (portHorizonte || 5) : 5;
   if (portTarget?.expReturn != null && patrimonio > 0) {
-    let totalLiq = 0;
+    let totalLiq   = 0;
+    let totalBruto = 0;
     for (const cnpj of selected) {
       const meta   = FUND_META[cnpj] || {};
       const trib   = meta.trib || 'RV';
@@ -5180,16 +5184,18 @@ function updatePortfolio() {
       const gross  = tgtI ? tgtI.value : portTarget.expReturn;
       const aporte = wNorm[cnpj] * patrimonio;
       const sim    = simularFundo(aporte, gross, trib, netHorizonte);
-      totalLiq    += sim ? sim.valorLiquido : aporte * Math.pow(1 + gross / 100, netHorizonte);
+      totalLiq   += sim ? sim.valorLiquido : aporte * Math.pow(1 + gross / 100, netHorizonte);
+      totalBruto += aporte * Math.pow(1 + gross / 100, netHorizonte);
     }
-    portNetReturn = (Math.pow(totalLiq / patrimonio, 1 / netHorizonte) - 1) * 100;
+    portNetReturn  = (Math.pow(totalLiq   / patrimonio, 1 / netHorizonte) - 1) * 100;
+    portGrossRetMW = (Math.pow(totalBruto / patrimonio, 1 / netHorizonte) - 1) * 100;
   }
 
   // Métricas — grid 3 colunas, altura fixa
 
   // Build synthesis sentence
   const synthParts = [];
-  if (portTarget?.expReturn != null) synthParts.push(`retorno estimado de <strong>+${portTarget.expReturn.toFixed(1)}% ao ano</strong>`);
+  if (portTarget?.expReturn != null) synthParts.push(`retorno estimado de <strong>+${(portGrossRetMW ?? portTarget.expReturn).toFixed(1)}% ao ano</strong>`);
   if (vol != null && isFinite(vol)) synthParts.push(`volatilidade histórica de <strong>${vol.toFixed(1)}% ao ano</strong>`);
   if (portTarget?.sharpe != null) synthParts.push(`Sharpe de <strong>${portTarget.sharpe.toFixed(2)}</strong>`);
   const synthVerd = synthParts.length > 0
@@ -5215,8 +5221,8 @@ Use o stress test para simular cenários de crise histórica.">Max. drawdown</di
       <div class="port-metric"><div class="port-metric-label">Patrimônio alocado</div><span class="port-metric-val neu">${patrimonio > 0 ? 'R$\u00a0' + brlAlocado.toLocaleString('pt-BR',{maximumFractionDigits:0}) : '—'}</span></div>
       <div class="port-metric" style="border-top:1px solid var(--border);padding-top:0.65rem;margin-top:0.1rem;grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:0">
         <div>
-          <div class="port-metric-label" data-tip="Retorno alvo estimado: média ponderada dos retornos dos fundos, com peso maior em janelas mais longas e ajuste de mean-reversion.">Retorno alvo* <span style="font-size:0.52rem;opacity:0.65">(bruto de I.R.)</span></div>
-          ${fmtTarget(portTarget?.expReturn)}
+          <div class="port-metric-label" data-tip="Retorno alvo estimado bruto: CAGR money-weighted simulando o valor terminal de cada fundo ao horizonte definido, antes do IR. Comparável ao retorno líquido exibido abaixo.">Retorno alvo* <span style="font-size:0.52rem;opacity:0.65">(bruto de I.R.)</span></div>
+          ${fmtTarget(portGrossRetMW ?? portTarget?.expReturn)}
         </div>
         <div>
           <div class="port-metric-label" data-tip="Sharpe: (retorno alvo − CDI) ÷ volatilidade. Acima de 0,5 é razoável para ações brasileiras.">Sharpe</div>
@@ -10364,7 +10370,7 @@ function renderCCTimeline() {
         return `<div style="padding:0.4rem 0.5rem;background:var(--surface);border:0.5px solid var(--border);border-radius:5px;text-align:center;min-width:0;overflow:hidden">
           <div style="font-family:'Courier New',monospace;font-size:0.52rem;color:var(--muted);margin-bottom:2px">${y}</div>
           <div style="font-family:'Courier New',monospace;font-size:0.62rem;color:var(--red);font-weight:bold;white-space:nowrap">${fmtBRL(v)}</div>
-          ${yearsLeft > 0 ? `<div style="font-family:'Courier New',monospace;font-size:0.48rem;color:var(--muted);margin-top:1px;white-space:nowrap" title="Custo de oportunidade: esse capital deixaria de crescer +${fmtBRL(oppCost)} nos ${yearsLeft} anos restantes">custo: +${fmtBRL(oppCost)}</div>` : ''}
+          ${yearsLeft > 0 ? `<div style="font-family:'Courier New',monospace;font-size:0.48rem;color:var(--muted);margin-top:1px;white-space:nowrap" data-tip="Custo de oportunidade: esse capital deixaria de crescer +${fmtBRL(oppCost)} nos ${yearsLeft} anos restantes">custo: +${fmtBRL(oppCost)}</div>` : ''}
         </div>`;
       }).join('')}
     </div>
