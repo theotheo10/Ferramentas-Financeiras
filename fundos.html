@@ -2446,8 +2446,8 @@
       <span class="status-dot loading" id="headerDot"></span>
       <span id="headerStatusText">carregando…</span>
     </div>
-    <a class="back-link" href="simulador.html" title="Ir para o Simulador de Aposentadoria">🧮 Simulador</a>
-    <a class="back-link" href="breadth.html" title="Ir para o IBOV Breadth">📈 Breadth</a>
+    <a class="back-link" href="simulador.html" title="Ir para o Simulador de Aposentadoria"> Simulador</a>
+    <a class="back-link" href="breadth.html" title="Ir para o IBOV Breadth"> Breadth</a>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema">◑</button>
   </div>
 </div>
@@ -3343,24 +3343,22 @@
       <div class="analysis-card-title" data-tip="Posição percentil do fundo no ranking ao longo do tempo — 100% = melhor do universo, 0% = pior. O toggle controla qual CAGR é usado para comparar os fundos.">Evolução do Ranking</div>
       <div style="font-family:'Courier New',monospace;font-size:0.57rem;color:var(--muted);margin-bottom:0.9rem">Percentil diário no universo de fundos — 100% = melhor, 0% = pior. A janela de tempo é sempre os últimos 12 meses; o toggle controla qual CAGR é usado para ranquear.</div>
 
-      <!-- Controls -->
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem">
-        <div style="display:flex;gap:6px;align-items:center;flex:1;min-width:200px">
-          <select class="fund-selector-analise" id="rankEvoMainSelect" onchange="renderRankEvoChart()" style="flex:1">
-            <option value="">— selecione um fundo —</option>
-          </select>
-          <button id="rankEvoCmpBtn" onclick="toggleRankEvoCmp()"
-            style="font-family:'Courier New',monospace;font-size:0.6rem;padding:4px 10px;
-                   border:0.5px solid var(--border);background:var(--surface);color:var(--muted);
-                   border-radius:4px;cursor:pointer;white-space:nowrap">
-            + Comparar
-          </button>
-          <select class="fund-selector-analise" id="rankEvoCmpSelect" onchange="renderRankEvoChart()"
-            style="flex:1;display:none">
-            <option value="">— comparar com —</option>
-          </select>
-        </div>
-        <div style="display:flex;gap:4px;align-items:center">
+      <!-- Controls — single row: [dropdown ----] [+ Comparar] [cmp dropdown] | Ranking por: 12M 36M 60M -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem">
+        <select class="fund-selector-analise" id="rankEvoMainSelect" onchange="renderRankEvoChart()" style="flex:2;min-width:160px">
+          <option value="">— selecione um fundo —</option>
+        </select>
+        <button id="rankEvoCmpBtn" onclick="toggleRankEvoCmp()"
+          style="font-family:'Courier New',monospace;font-size:0.6rem;padding:4px 10px;
+                 border:0.5px solid var(--border);background:var(--surface);color:var(--muted);
+                 border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0">
+          + Comparar
+        </button>
+        <select class="fund-selector-analise" id="rankEvoCmpSelect" onchange="renderRankEvoChart()"
+          style="flex:2;min-width:160px;display:none">
+          <option value="">— comparar com —</option>
+        </select>
+        <div style="display:flex;gap:4px;align-items:center;flex-shrink:0;margin-left:auto">
           <span style="font-family:'Courier New',monospace;font-size:0.58rem;color:var(--muted)">Ranking por:</span>
           <button class="window-btn active" data-recagr="12" onclick="setRankEvoCagr('12',this)">12M</button>
           <button class="window-btn"        data-recagr="36" onclick="setRankEvoCagr('36',this)">36M</button>
@@ -5778,7 +5776,7 @@ function _updateScenarioUI() {
     resetBtn.style.display = 'none';
     label.textContent = '';
   } else {
-    btn.textContent = '📊 Comparar com novo cenário';
+    btn.textContent = 'Comparar com novo cenário';
     btn.classList.add('saved');
     resetBtn.style.display = '';
     const t = new Date(_scenarioA.timestamp);
