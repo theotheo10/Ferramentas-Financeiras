@@ -7439,22 +7439,24 @@ function runOptimizer() {
 
   const validCnpjs = allCnpjs.filter(c => muMap[c] != null);
 
-  // Pre-materialise all combos to allow chunking
-  const allCombos = [...combinations(validCnpjs, k)];
-  const total     = allCombos.length;
-  const CHUNK     = 600;
+  // Usa o generator diretamente — não materializa tudo em memória de uma vez.
+  // Crítico para C(24,10)=1.961.256: materializar quebraria o browser.
+  const total     = optUniCombos(validCnpjs.length, k);
+  const CHUNK     = 400;
 
   let best            = null;
   let nCombos         = 0;
   let idx             = 0;
   const stressCandidates = optObj === 'stress' ? [] : null;
+  const comboGen      = combinations(validCnpjs, k);
 
   function processChunk() {
     if (_optCancelled) return;
     const end = Math.min(idx + CHUNK, total);
     try {
       for (; idx < end; idx++) {
-        const combo = allCombos[idx];
+        const { value: combo, done } = comboGen.next();
+        if (done) break;
         nCombos++;
         const mus = combo.map(c => muMap[c]);
         const cov = covMatrix(combo, historyData);
