@@ -6294,7 +6294,7 @@ let optClassMM  = { min: null, max: null };  // Multimercado
 const optUniExcluded = new Set();
 // Active elegibility chip filters (value = set of allowed values; null = all)
 const optUniFilters = {
-  tipo: new Set(['Long Only', 'Long Biased', 'Multimercado', 'Renda Fixa']),
+  tipo: new Set(['Long Only', 'Long Biased', 'Long & Short', 'Multimercado', 'Renda Fixa']),
   expo: new Set(['Brasil', 'Internacional', 'Majoritariamente']),
   trib: new Set(['RV', 'TR', 'Isento']),
 };
@@ -7104,27 +7104,53 @@ function maxSharpeWeights(cnpjs, mus, cdiTarget, cov) {
 // Com k fundos: ordena por retorno alvo, pega top-k, otimiza Sharpe entre eles
 // (mais interessante que simplesmente alocar 100% no melhor)
 // Se não conseguir Sharpe, usa pesos uniformes
-function maxReturnWeights(mus) {
-  // Solução LP exata para máximo retorno com constraints de peso.
-  // Ordena fundos por retorno decrescente e aloca o máximo permitido (optMaxW)
-  // em cada um até somar 100%, respeitando o mínimo (optMinW) em todos.
-  // Isso garante que o portfólio realmente maximiza o retorno esperado dado os constraints.
+function maxReturnWeights(mus, combo) {
+  // Solução LP exata para máximo retorno com constraints de peso e de classe.
+  // 1) Pré-aloca o mínimo exigido de RF (e outros classes com min) nos seus melhores fundos.
+  // 2) Distribui o restante pelos fundos de maior retorno, respeitando maxW por fundo.
   const k = mus.length;
   const wMax = (typeof optMaxW !== 'undefined') ? optMaxW : 1.0;
   const wMin = (typeof optMinW !== 'undefined') ? optMinW : 0.01;
 
-  // Ordena índices por retorno decrescente
-  const order = mus.map((m, i) => i).sort((a, b) => mus[b] - mus[a]);
-
-  // Inicia todos no mínimo
+  // Inicia todos no mínimo global
   const w = new Array(k).fill(wMin);
   let remaining = 1.0 - wMin * k;
 
-  // Aloca o excedente nos melhores fundos primeiro
+  // Pré-aloca mínimos de classe (RF, RV, MM) antes de maximizar retorno
+  if (combo) {
+    for (const [cls, con] of [['rf', optClassRF], ['rv', optClassRV], ['mm', optClassMM]]) {
+      if (!con || con.min === null || con.min <= 0) continue;
+      // Índices dos fundos desta classe, ordenados por retorno desc
+      const clsIdx = combo
+        .map((c, i) => ({ i, cls: _fundClass(c), mu: mus[i] }))
+        .filter(x => x.cls === cls)
+        .sort((a, b) => b.mu - a.mu)
+        .map(x => x.i);
+      let need = con.min - clsIdx.reduce((s, i) => s + w[i], 0);
+      for (const i of clsIdx) {
+        if (need <= 1e-12) break;
+        const room = Math.min(wMax, con.max ?? wMax) - w[i];
+        if (room <= 0) continue;
+        const add = Math.min(room, need, remaining);
+        w[i] += add;
+        remaining -= add;
+        need -= add;
+      }
+    }
+  }
+
+  // Distribui o restante pelos fundos de maior retorno
+  const order = mus.map((m, i) => i).sort((a, b) => mus[b] - mus[a]);
   for (const i of order) {
     if (remaining <= 1e-12) break;
-    const room = wMax - wMin;
-    const add  = Math.min(room, remaining);
+    const clsCon = combo ? (() => {
+      const cls = _fundClass(combo[i]);
+      return cls === 'rf' ? optClassRF : cls === 'rv' ? optClassRV : optClassMM;
+    })() : null;
+    const capMax = clsCon?.max != null ? Math.min(wMax, clsCon.max) : wMax;
+    const room = capMax - w[i];
+    if (room <= 0) continue;
+    const add = Math.min(room, remaining);
     w[i] += add;
     remaining -= add;
   }
@@ -7324,7 +7350,7 @@ function _computeWeights(combo, mus, cov, cdiTarget, ibovProxy) {
     w = maxSharpeWeights(combo, mus, cdiTarget, cov);
     if (!w) w = minVolWeights(cov);
   } else if (optObj === 'return') {
-    w = maxReturnWeights(mus);
+    w = maxReturnWeights(mus, combo);
   } else if (optObj === 'sortino') {
     w = maxSortinoWeights(combo, mus, cdiTarget, historyData);
     if (!w) w = maxSharpeWeights(combo, mus, cdiTarget, cov);
