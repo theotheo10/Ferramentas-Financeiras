@@ -5189,8 +5189,7 @@ function updatePortfolio() {
     }
     portNetReturn  = (Math.pow(totalLiq   / patrimonio, 1 / netHorizonte) - 1) * 100;
     portGrossRetMW = (Math.pow(totalBruto / patrimonio, 1 / netHorizonte) - 1) * 100;
-    // Garante que o líquido nunca exceda o bruto money-weighted (por construção já é assim,
-    // mas clamp explícito por segurança)
+    // Garante que o líquido nunca exceda o bruto money-weighted
     if (portGrossRetMW != null && portNetReturn > portGrossRetMW) portNetReturn = portGrossRetMW;
   }
 
@@ -5198,7 +5197,7 @@ function updatePortfolio() {
 
   // Build synthesis sentence
   const synthParts = [];
-  if (portTarget?.expReturn != null) synthParts.push(`retorno estimado de <strong>+${portTarget.expReturn.toFixed(1)}% ao ano</strong>`);
+  if (portTarget?.expReturn != null) synthParts.push(`retorno estimado de <strong>+${(portGrossRetMW ?? portTarget.expReturn).toFixed(1)}% ao ano</strong>`);
   if (vol != null && isFinite(vol)) synthParts.push(`volatilidade histórica de <strong>${vol.toFixed(1)}% ao ano</strong>`);
   if (portTarget?.sharpe != null) synthParts.push(`Sharpe de <strong>${portTarget.sharpe.toFixed(2)}</strong>`);
   const synthVerd = synthParts.length > 0
@@ -5224,8 +5223,8 @@ Use o stress test para simular cenários de crise histórica.">Max. drawdown</di
       <div class="port-metric"><div class="port-metric-label">Patrimônio alocado</div><span class="port-metric-val neu">${patrimonio > 0 ? 'R$\u00a0' + brlAlocado.toLocaleString('pt-BR',{maximumFractionDigits:0}) : '—'}</span></div>
       <div class="port-metric" style="border-top:1px solid var(--border);padding-top:0.65rem;margin-top:0.1rem;grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:0">
         <div>
-          <div class="port-metric-label" data-tip="Retorno alvo estimado: média ponderada dos retornos dos fundos, com peso maior em janelas mais longas e ajuste de mean-reversion. Bruto de IR.">Retorno alvo* <span style="font-size:0.52rem;opacity:0.65">(bruto de I.R.)</span></div>
-          ${fmtTarget(portTarget?.expReturn)}
+          <div class="port-metric-label" data-tip="Retorno alvo estimado bruto de IR — calculado com a mesma metodologia money-weighted do retorno líquido, garantindo comparabilidade. Fundos com maior aporte têm peso proporcional ao valor terminal.">Retorno alvo* <span style="font-size:0.52rem;opacity:0.65">(bruto de I.R.)</span></div>
+          ${fmtTarget(portGrossRetMW ?? portTarget?.expReturn)}
         </div>
         <div>
           <div class="port-metric-label" data-tip="Sharpe: (retorno alvo − CDI) ÷ volatilidade. Acima de 0,5 é razoável para ações brasileiras.">Sharpe</div>
