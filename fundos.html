@@ -5189,15 +5189,14 @@ function updatePortfolio() {
     }
     portNetReturn  = (Math.pow(totalLiq   / patrimonio, 1 / netHorizonte) - 1) * 100;
     portGrossRetMW = (Math.pow(totalBruto / patrimonio, 1 / netHorizonte) - 1) * 100;
-    // Garante que o líquido nunca exceda o bruto money-weighted
-    if (portGrossRetMW != null && portNetReturn > portGrossRetMW) portNetReturn = portGrossRetMW;
+    // portGrossRetMW >= portNetReturn por construção (IR ≥ 0 → terminal líquido ≤ bruto)
   }
 
   // Métricas — grid 3 colunas, altura fixa
 
   // Build synthesis sentence
   const synthParts = [];
-  if (portTarget?.expReturn != null) synthParts.push(`retorno estimado de <strong>+${(portGrossRetMW ?? portTarget.expReturn).toFixed(1)}% ao ano</strong>`);
+  if (portTarget?.expReturn != null) synthParts.push(`retorno estimado de <strong>+${portTarget.expReturn.toFixed(1)}% ao ano</strong>`);
   if (vol != null && isFinite(vol)) synthParts.push(`volatilidade histórica de <strong>${vol.toFixed(1)}% ao ano</strong>`);
   if (portTarget?.sharpe != null) synthParts.push(`Sharpe de <strong>${portTarget.sharpe.toFixed(2)}</strong>`);
   const synthVerd = synthParts.length > 0
@@ -5205,10 +5204,17 @@ function updatePortfolio() {
     : '';
 
   // Net return card — horizonte dinâmico do slider
+  // Exibe bruto e líquido buy-and-hold side by side — par comparável no mesmo horizonte
   const netRetHtml = (portNetReturn != null) ? `
-      <div class="port-metric" style="border-top:0.5px solid var(--border);padding-top:0.65rem;margin-top:0.1rem;grid-column:1/-1">
-        <div class="port-metric-label" data-tip="Retorno estimado após imposto de renda no horizonte definido pelo slider, calculado com o motor exato do Simulador IR. Fundos RV: IR 15% no resgate, sem come-cotas. Fundos TR: come-cotas semestrais (maio/novembro) simulados evento a evento.">Retorno líquido* <span style="font-size:0.52rem;opacity:0.65">(após I.R. · ${netHorizonte} ${netHorizonte === 1 ? 'ano' : 'anos'})</span></div>
-        <span class="port-metric-val ${portNetReturn >= 0 ? 'pos' : 'neg'}" style="font-size:1.35rem">${portNetReturn >= 0 ? '+' : ''}${portNetReturn.toFixed(1)}%</span>
+      <div class="port-metric" style="border-top:0.5px solid var(--border);padding-top:0.65rem;margin-top:0.1rem;grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:0">
+        <div>
+          <div class="port-metric-label" data-tip="CAGR bruto do portfólio buy-and-hold no horizonte definido, sem rebalanceamento e antes do IR. Difere do retorno alvo a.a. porque os fundos de maior retorno crescem desproporcionalmente e dominam o valor terminal em prazos longos.">CAGR bruto* <span style="font-size:0.52rem;opacity:0.65">(buy-and-hold · ${netHorizonte} ${netHorizonte === 1 ? 'ano' : 'anos'})</span></div>
+          <span class="port-metric-val ${portGrossRetMW != null && portGrossRetMW >= 0 ? 'pos' : 'neg'}" style="font-size:1.35rem">${portGrossRetMW != null ? (portGrossRetMW >= 0 ? '+' : '') + portGrossRetMW.toFixed(1) + '%' : '—'}</span>
+        </div>
+        <div>
+          <div class="port-metric-label" data-tip="CAGR líquido do portfólio buy-and-hold no horizonte definido, após IR simulado evento a evento. Fundos RV: IR 15% no resgate. Fundos TR: come-cotas semestrais (maio/novembro). O custo do IR dilui-se com o prazo — por isso o spread bruto−líquido diminui em horizontes longos.">CAGR líquido* <span style="font-size:0.52rem;opacity:0.65">(após I.R. · ${netHorizonte} ${netHorizonte === 1 ? 'ano' : 'anos'})</span></div>
+          <span class="port-metric-val ${portNetReturn >= 0 ? 'pos' : 'neg'}" style="font-size:1.35rem">${portNetReturn >= 0 ? '+' : ''}${portNetReturn.toFixed(1)}%</span>
+        </div>
       </div>` : '';
 
   document.getElementById('portMetrics').innerHTML = `${missingWarning}${synthVerd}
@@ -5223,8 +5229,8 @@ Use o stress test para simular cenários de crise histórica.">Max. drawdown</di
       <div class="port-metric"><div class="port-metric-label">Patrimônio alocado</div><span class="port-metric-val neu">${patrimonio > 0 ? 'R$\u00a0' + brlAlocado.toLocaleString('pt-BR',{maximumFractionDigits:0}) : '—'}</span></div>
       <div class="port-metric" style="border-top:1px solid var(--border);padding-top:0.65rem;margin-top:0.1rem;grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:0">
         <div>
-          <div class="port-metric-label" data-tip="Retorno alvo estimado bruto de IR — calculado com a mesma metodologia money-weighted do retorno líquido, garantindo comparabilidade. Fundos com maior aporte têm peso proporcional ao valor terminal.">Retorno alvo* <span style="font-size:0.52rem;opacity:0.65">(bruto de I.R.)</span></div>
-          ${fmtTarget(portGrossRetMW ?? portTarget?.expReturn)}
+          <div class="port-metric-label" data-tip="Retorno alvo estimado: média ponderada dos retornos anuais de cada fundo, com peso maior em janelas mais longas e ajuste de mean-reversion. Bruto de IR — não varia com o horizonte de tributação.">Retorno alvo* <span style="font-size:0.52rem;opacity:0.65">(bruto de I.R.)</span></div>
+          ${fmtTarget(portTarget?.expReturn)}
         </div>
         <div>
           <div class="port-metric-label" data-tip="Sharpe: (retorno alvo − CDI) ÷ volatilidade. Acima de 0,5 é razoável para ações brasileiras.">Sharpe</div>
