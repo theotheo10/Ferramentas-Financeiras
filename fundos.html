@@ -3436,6 +3436,7 @@ const FUND_META = {
   "07.013.315/0001-12": { nome:"Polo Norte L&S", short:"Polo Norte", inception:"2005-01-03", initialQuota:1.02944309, maxQuota:14.74216414, tipo:"Long & Short", trib:"RV", expo:"Brasil", banco:"Itaú", grossUp:false, obs:"" },
   "14.812.722/0001-55": { nome:"AZ Quest Total Return", short:"AZ Quest TR", inception:"2012-01-23", initialQuota:1.0, maxQuota:4.9926943, tipo:"Long & Short", trib:"RV", expo:"Brasil", banco:"XP", grossUp:false, obs:"" },
   "48.997.077/0001-04": { nome:"Genoa Sagres", short:"Sagres", inception:"2023-09-28", initialQuota:1.0, maxQuota:1.54042265, tipo:"Renda Fixa", trib:"TR", expo:"Majoritariamente Brasil", banco:"XP", grossUp:false, obs:"" },
+  "52.217.086/0001-02": { nome:"Arbor Hedge", short:"Arbor Hedge", inception:"2023-10-31", initialQuota:100.0, maxQuota:164.5460844, tipo:"Long Biased", trib:"RV", expo:"Internacional", banco:"BTG", grossUp:false, obs:"" },
 };
 const TRIB_LABEL = { RV:"Renda Variável", TR:"Tabela Regressiva", Isento:"Isento de IR" };
 
@@ -4225,6 +4226,7 @@ const FUND_EXPOSURE = {
   "07.013.315/0001-12": { net_normal:0.0, net_crisis:0.0, primary:"ibov" }, // Polo Norte L&S
   "14.812.722/0001-55": { net_normal:0.0, net_crisis:0.0, primary:"ibov" }, // AZ Quest Total Return
   "48.997.077/0001-04": { net_normal:0.0, net_crisis:0.0, primary:"cdi" }, // Genoa Sagres
+  "52.217.086/0001-02": { net_normal:0.65, net_crisis:0.4, primary:"sp500" }, // Arbor Hedge
 };
 
 // Historical stress scenarios
