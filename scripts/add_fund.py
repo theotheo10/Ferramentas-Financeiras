@@ -413,7 +413,7 @@ def update_index(funds: list[dict]) -> None:
 
 def main():
     if len(sys.argv) < 2:
-        print("Uso: python add_fund.py '<json>'")
+        print("Uso: python add_fund.py '<json>' [ano_inicio]")
         sys.exit(1)
 
     try:
@@ -421,6 +421,19 @@ def main():
     except json.JSONDecodeError as e:
         print(f"ERRO: JSON inválido — {e}")
         sys.exit(1)
+
+    # ano_inicio: limita busca histórica — evita timeout para fundos recentes
+    # Se omitido ou vazio, detecta automaticamente pelo CNPJ:
+    #   CNPJ ≥ 40.000.000 → post-2020 → busca desde 2020
+    #   CNPJ ≥ 50.000.000 → post-2022 → busca desde 2022
+    #   Caso contrário     → busca desde CVM_OLDEST_YEAR (2005)
+    global CVM_OLDEST_YEAR, FIRST_MONTHLY
+    ano_inicio_arg = sys.argv[2].strip() if len(sys.argv) > 2 else ""
+    if ano_inicio_arg and ano_inicio_arg.isdigit():
+        ano_override = int(ano_inicio_arg)
+        CVM_OLDEST_YEAR = max(CVM_OLDEST_YEAR, ano_override)
+        FIRST_MONTHLY   = max(FIRST_MONTHLY,   ano_override)
+        print(f"[ano_inicio={ano_override}] Buscando histórico desde {ano_override}")
 
     if isinstance(raw, dict):
         raw = [raw]
@@ -452,7 +465,23 @@ def main():
         print(f"   {f['tipo']} | {f['trib']} | {f['expo']} | {f['banco']}")
         print(f"   Exposição: normal={exposure['net_normal']} crise={exposure['net_crisis']} benchmark={exposure['benchmark']}")
 
-        print(f"   Buscando histórico na CVM…")
+        # Auto-detecção de ano_inicio pelo CNPJ se não fornecido manualmente
+        if not ano_inicio_arg or not ano_inicio_arg.isdigit():
+            cnpj_num = int(d[:8])  # primeiros 8 dígitos do CNPJ
+            if cnpj_num >= 50_000_000:
+                CVM_OLDEST_YEAR = max(CVM_OLDEST_YEAR, 2022)
+                FIRST_MONTHLY   = max(FIRST_MONTHLY,   2022)
+                print(f"   [auto] CNPJ ≥ 50M → buscando desde 2022")
+            elif cnpj_num >= 40_000_000:
+                CVM_OLDEST_YEAR = max(CVM_OLDEST_YEAR, 2020)
+                FIRST_MONTHLY   = max(FIRST_MONTHLY,   2020)
+                print(f"   [auto] CNPJ ≥ 40M → buscando desde 2020")
+            elif cnpj_num >= 30_000_000:
+                CVM_OLDEST_YEAR = max(CVM_OLDEST_YEAR, 2017)
+                FIRST_MONTHLY   = max(FIRST_MONTHLY,   2017)
+                print(f"   [auto] CNPJ ≥ 30M → buscando desde 2017")
+
+        print(f"   Buscando histórico na CVM (desde {min(CVM_OLDEST_YEAR, FIRST_MONTHLY)})…")
         quotas = fetch_full_history(d, cnpj_fmt)
 
         if not quotas:
