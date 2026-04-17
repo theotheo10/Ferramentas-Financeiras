@@ -52,6 +52,7 @@ FUNDS = [
     {"name": "Polo Norte I Long Short FIC FIM", "exibicao": "Polo Norte L&S", "curto": "Polo Norte", "cnpj": "07013315000112", "cnpjFmt": "07.013.315/0001-12"},
     {"name": "AZ Quest Total Return FIC FI Fin Multimercado", "exibicao": "AZ Quest Total Return", "curto": "AZ Quest TR", "cnpj": "14812722000155", "cnpjFmt": "14.812.722/0001-55"},
     {"name": "Genoa Capital Sagres I FIF CIC Multimercado RL", "exibicao": "Genoa Sagres", "curto": "Sagres", "cnpj": "48997077000104", "cnpjFmt": "48.997.077/0001-04"},
+    {"name": "Arbor Hedge Long Biased FIC FIA RL", "exibicao": "Arbor Hedge", "curto": "Arbor Hedge", "cnpj": "52217086000102", "cnpjFmt": "52.217.086/0001-02"},
 ]
 
 FIRST_MONTHLY_YEAR = 2021   # CVM: arquivos mensais a partir daqui
