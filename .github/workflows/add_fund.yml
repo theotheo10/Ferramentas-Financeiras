@@ -21,11 +21,15 @@ on:
           Exemplo mínimo:
           [{"cnpj":"46351969000108","nome":"Opportunity Global Equity Real Institucional FIC FIF Ações IE RL","exibicao":"Opportunity Global","curto":"Opportunity","tipo":"Long Only","trib":"RV","expo":"Internacional","banco":"Itaú"}]
         required: true
+      ano_inicio:
+        description: "Ano de início da busca histórica na CVM (ex: 2023). Deixe em branco para detecção automática pelo CNPJ."
+        required: false
+        default: ""
 
 jobs:
   add-fund:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       contents: write
 
@@ -37,7 +41,7 @@ jobs:
           python-version: '3.12'
 
       - name: Adicionar fundo(s)
-        run: python scripts/add_fund.py '${{ github.event.inputs.fundos }}'
+        run: python scripts/add_fund.py '${{ github.event.inputs.fundos }}' '${{ github.event.inputs.ano_inicio }}'
 
       - name: Commit e push
         run: |
