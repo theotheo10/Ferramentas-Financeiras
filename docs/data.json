@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-01T21:56:01.871037+00:00",
+  "generatedAt": "2026-05-04T16:31:24.497936+00:00",
   "anchorDate": "2026-04-29",
   "ibov": {
     "cagr12": 36.78696652531435,
@@ -19,7 +19,7 @@
   "ntnb": {
     "ntnb_rate_long": 7.2624,
     "ntnb_rate_mid": 7.7696,
-    "ntnb_fetched_at": "2026-05-01T21:54:34.016796+00:00",
+    "ntnb_fetched_at": "2026-05-04T16:29:50.287418+00:00",
     "ntnb_titles": [
       {
         "nome": "NTN-B",
@@ -100,9 +100,9 @@
     "ntnb_source": "anbima"
   },
   "ipca_focus": {
-    "ipca_12m": 4.86,
+    "ipca_12m": 4.89,
     "ipca_longo_prazo": 3.5,
-    "ipca_fetched_at": "2026-04-24",
+    "ipca_fetched_at": "2026-04-30",
     "ipca_source": "focus"
   },
   "fund_betas": {
@@ -330,7 +330,7 @@
     "47.511.351/0001-20": 5.6023,
     "52.116.227/0001-09": 0.6601,
     "47.612.105/0001-65": 8.8749,
-    "29.726.133/0001-21": 0.4062,
+    "29.726.133/0001-21": 0.3327,
     "35.828.684/0001-07": 0.3818,
     "16.876.874/0001-47": -3.9106,
     "52.239.457/0001-57": 0.258,
@@ -821,10 +821,10 @@
       "name": "Kapitalo K10 FIF Cotas FIM",
       "cnpj": "29.726.133/0001-21",
       "cnpjFmt": "29.726.133/0001-21",
-      "latestDate": "2026-04-28",
-      "latestQuota": 2.74963220195,
-      "isDelayed": true,
-      "delayDays": 1,
+      "latestDate": "2026-04-29",
+      "latestQuota": 2.737767750438,
+      "isDelayed": false,
+      "delayDays": 0,
       "maxQuota": 2.857601129233,
       "maxQuotaDate": "2026-02-26",
       "inceptionDate": "2019-01-02",
@@ -832,14 +832,14 @@
       "anchor12m": "2025-04-29",
       "anchor36m": "2023-04-29",
       "anchor60m": "2021-04-29",
-      "cagr12": 13.692536793145194,
-      "cagr36": 13.317492421172862,
-      "cagr60": 15.266252927658552,
-      "cagrInception": 14.596675306134355,
+      "cagr12": 13.161834252849758,
+      "cagr36": 13.141562563210506,
+      "cagr60": 15.157633803352489,
+      "cagrInception": 14.523171695391234,
       "ibovCagrInception": 10.154,
       "cdiCagrInception": null,
       "alphaVsCdi": null,
-      "alphaVsIbov": 4.4426,
+      "alphaVsIbov": 4.3691,
       "error": false
     },
     {
